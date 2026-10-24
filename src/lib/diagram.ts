@@ -195,7 +195,21 @@ export async function renderDiagram(
   }
 }
 
-export function sanitizeSvgForExport(svg: string): string {
+export type DiagramTheme = "dark" | "light";
+
+const PELE_PALETTES: Record<DiagramTheme, string> = {
+  dark: `--pele-bg:#0b0e14; --pele-fg:#e8ecf5; --pele-muted:#8f9ab3;
+         --pele-line:#61708f; --pele-surface:#171d2a; --pele-surface-alt:#1f2737;
+         --pele-border:#33405a; --pele-accent:#8ba4ff;`,
+  light: `--pele-bg:#ffffff; --pele-fg:#1a2233; --pele-muted:#64718a;
+          --pele-line:#8d99ad; --pele-surface:#f7f8fc; --pele-surface-alt:#eef2fa;
+          --pele-border:#d8dfec; --pele-accent:#4767e8;`,
+};
+
+export function sanitizeSvgForExport(
+  svg: string,
+  theme: DiagramTheme = "dark",
+): string {
   let clean = svg
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "")
@@ -206,9 +220,7 @@ export function sanitizeSvgForExport(svg: string): string {
   if (!clean.includes("--pele-bg")) {
     const style = `<style>
       svg.pele, .pele {
-        --pele-bg:#0b0e14; --pele-fg:#e8ecf5; --pele-muted:#8f9ab3;
-        --pele-line:#61708f; --pele-surface:#171d2a; --pele-surface-alt:#1f2737;
-        --pele-border:#33405a; --pele-accent:#8ba4ff;
+        ${PELE_PALETTES[theme]}
         --pele-font:Inter,system-ui,sans-serif; --pele-radius:8px;
       }
     </style>`;
@@ -221,8 +233,9 @@ export async function svgToPngBase64(
   svg: string,
   scale = 2,
   background = "#0b0e14",
+  theme: DiagramTheme = "dark",
 ): Promise<string> {
-  const blob = new Blob([sanitizeSvgForExport(svg)], {
+  const blob = new Blob([sanitizeSvgForExport(svg, theme)], {
     type: "image/svg+xml;charset=utf-8",
   });
   const url = URL.createObjectURL(blob);

@@ -170,7 +170,7 @@ export function WorkspacePane() {
         filters: [{ name: "SVG", extensions: ["svg"] }],
       });
       if (path) {
-        await api.saveFile(path, sanitizeSvgForExport(svg), false);
+        await api.saveFile(path, sanitizeSvgForExport(svg, theme), false);
         toast.success("SVG esportato");
       }
     } catch (exportError) {
@@ -190,6 +190,7 @@ export function WorkspacePane() {
           svg,
           2,
           theme === "dark" ? "#0b0e14" : "#ffffff",
+          theme,
         );
         await api.saveFile(path, data, true);
         toast.success("PNG 2x esportato");
@@ -217,7 +218,7 @@ export function WorkspacePane() {
   const copySvg = async () => {
     if (!svg) return;
     try {
-      await navigator.clipboard.writeText(sanitizeSvgForExport(svg));
+      await navigator.clipboard.writeText(sanitizeSvgForExport(svg, theme));
       toast.success("SVG copiato");
     } catch (copyError) {
       toast.error(`Copia SVG: ${String(copyError)}`);

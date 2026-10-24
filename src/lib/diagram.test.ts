@@ -74,4 +74,10 @@ describe("sanitizeSvgForExport", () => {
     expect(clean).not.toContain("<script");
     expect(clean).not.toContain("javascript:");
   });
+
+  it("injects the selected theme for Pele exports", () => {
+    const svg = '<svg class="pele"></svg>';
+    expect(sanitizeSvgForExport(svg, "light")).toContain("--pele-bg:#ffffff");
+    expect(sanitizeSvgForExport(svg, "dark")).toContain("--pele-bg:#0b0e14");
+  });
 });
