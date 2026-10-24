@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-24.04
+            args: "--bundles deb,rpm,appimage"
+          - platform: windows-latest
+            args: "--bundles nsis"
+          - platform: macos-15-intel
+            args: "--target x86_64-apple-darwin --bundles dmg --no-sign"
+            rust_target: x86_64-apple-darwin
+          - platform: macos-15
+            args: "--target aarch64-apple-darwin --bundles dmg --no-sign"
+            rust_target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add macOS Rust target
+        if: matrix.rust_target != ''
+        run: rustup target add ${{ matrix.rust_target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            rpm \
+            libssl-dev \
+            build-essential
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish release assets
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Mermaid Creator v__VERSION__"
+          releaseBody: |
+            # Mermaid Creator v__VERSION__
+
+            Prima versione utilizzabile: chat OpenRouter, allegati, diagrammi Mermaid,
+            workspace con versioni, libreria ed export.
+
+            ## Asset
+
+            - **Linux**: `.deb`, `.rpm`, `.AppImage`
+            - **Windows**: installer NSIS (`.exe`)
+            - **macOS**: `.dmg` Intel (`x86_64`) e Apple Silicon (`aarch64`)
+
+            Le build non sono firmate: Windows SmartScreen e macOS Gatekeeper possono
+            mostrare un avviso. Su macOS, se necessario, usa Open Anyway nelle
+            impostazioni Privacy & Security.
+
+            ## Requisiti
+
+            Serve una API key OpenRouter, inseribile al primo avvio.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

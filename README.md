@@ -53,7 +53,16 @@ bash scripts/with-env.sh cargo check --manifest-path src-tauri/Cargo.toml
 
 Il guard verifica mount, UUID e directory; se Kingston non è montato, si ferma.
 
-## Avvio
+## Avvio rapido
+
+Dalla root del repository:
+
+```bash
+./scripts/run.sh
+```
+
+Lo script carica l'ambiente Kingston, installa `node_modules` se manca e avvia
+`tauri dev`. In alternativa:
 
 ```bash
 source scripts/env.sh
@@ -62,6 +71,17 @@ npm run tauri:dev
 ```
 
 La prima compilazione Rust può richiedere 15-25 minuti. Le successive sono incrementali.
+
+## Release
+
+La versione `0.1.0` è taggata `v0.1.0`. Il workflow
+`.github/workflows/release.yml` produce e pubblica:
+
+- Linux: `.deb`, `.rpm`, `.AppImage`
+- Windows: installer NSIS `.exe`
+- macOS: `.dmg` Intel e Apple Silicon
+
+I pacchetti non sono firmati.
 
 ## Build pacchetti
 
