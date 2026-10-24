@@ -89,6 +89,8 @@ pub struct SendRequest {
     pub text: String,
     pub target_diagram_id: Option<String>,
     #[serde(default)]
+    pub target_theme: Option<String>,
+    #[serde(default)]
     pub attachment_ids: Vec<String>,
 }
 

@@ -12,10 +12,16 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useApp } from "../store";
 import { ACCEPT, MAX_FILES, formatBytes } from "../lib/files";
 import type { Attachment, ChatUsage, Message, PendingAttachment } from "../types";
 import { api } from "../lib/ipc";
+import {
+  extractThemeCommand,
+  stripThemeCommands,
+  themeCommandSummary,
+} from "../lib/diagram/themeCommand";
 import { Markdown } from "./Markdown";
 import { ModelPicker } from "./ModelPicker";
 
@@ -99,16 +105,24 @@ function MessageBubble({ message }: { message: Message }) {
   if (message.status === "streaming") return null;
   const isUser = message.role === "user";
   const messageDiagrams = diagrams.filter((diagram) => diagram.messageId === message.id);
+  const themeCommand = !isUser ? extractThemeCommand(message.content) : null;
+  const visibleContent = isUser ? message.content : stripThemeCommands(message.content);
 
   return (
     <div className={`message-row ${isUser ? "user" : "assistant"}`}>
       <div className={`message-bubble ${isUser ? "user-bubble" : "assistant-bubble"}`}>
         {isUser ? (
           <div className="user-text">{message.content}</div>
-        ) : message.content ? (
+        ) : visibleContent ? (
           <Markdown content={message.content} />
-        ) : (
+        ) : themeCommand ? null : (
           <div className="muted">Nessun testo restituito.</div>
+        )}
+
+        {themeCommand && (
+          <div className="theme-note">
+            Tema del diagramma: {themeCommandSummary(themeCommand)}
+          </div>
         )}
 
         {message.status !== "complete" && message.status !== "streaming" && (
@@ -168,6 +182,7 @@ export function ChatPane() {
   const diagrams = useApp((s) => s.diagrams);
   const library = useApp((s) => s.library);
   const targetDiagramId = useApp((s) => s.targetDiagramId);
+  const diagramDirty = useApp((s) => s.diagramDirty);
   const pendingAttachments = useApp((s) => s.pendingAttachments);
   const models = useApp((s) => s.models);
   const settings = useApp((s) => s.settings);
@@ -218,6 +233,10 @@ export function ChatPane() {
 
   const submit = async () => {
     if (!canSend) return;
+    if (targetDiagramId && diagramDirty) {
+      toast.error("Salva le modifiche al diagramma prima di inviare la richiesta");
+      return;
+    }
     const text = input.trim();
     setInput("");
     await sendMessage(text);
@@ -324,6 +343,7 @@ export function ChatPane() {
             <Target size={14} />
             <span>
               Modifica: <strong>{targetDiagram.title}</strong>
+              {diagramDirty && <em className="target-dirty"> · salva prima di inviare</em>}
             </span>
             <button
               className="icon-btn"

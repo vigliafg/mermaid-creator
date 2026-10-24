@@ -119,6 +119,7 @@ export interface SendRequest {
   modelId: string;
   text: string;
   targetDiagramId: string | null;
+  targetTheme: string | null;
   attachmentIds: string[];
 }
 

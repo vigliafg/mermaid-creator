@@ -10,7 +10,12 @@ Prima versione utilizzabile (0.1.0):
 - allegati: testo, PDF testuale, DOCX, immagini, clipboard e drag&drop;
 - estrazione automatica dei blocchi Mermaid dalle risposte;
 - rendering Pele con fallback Mermaid.js;
-- workspace con zoom, editor del sorgente, versioni, ripristino;
+- workspace/editor espandibile a tutta finestra (chat e cronologia si
+  ritirano in una barra con chevron), con pan, zoom alla rotella, fit, temi e
+  preset (13 temi, inclusi Neon, Blueprint, Terminal, Mono e altri), stile per
+  elemento (dove Mermaid lo consente), modifica label/struttura flowchart,
+  anteprima live del sorgente, versioni e ripristino; comandi AI per preset e
+  palette; fascia verticale dei controlli a destra del diagramma, richiudibile;
 - libreria con ricerca, preferiti ed export SVG/PNG/.mmd;
 - SQLite locale per conversazioni, diagrammi, versioni e allegati.
 
@@ -99,6 +104,7 @@ source scripts/env.sh
 npm test
 npm run typecheck
 npm run build
+npm run test:render   # parità Pele/Mermaid, richiede Chrome (salta se assente)
 ```
 
 ## Dati e privacy
@@ -115,6 +121,14 @@ npm run build
 - Nessun confronto visuale tra versioni.
 - Export PDF/presentazione rimandati.
 - La release è verificata su Linux (Ubuntu 26.04).
+- Il tema per diagramma non è versionato e non è incluso nel `.mmd`; gli
+  export SVG/PNG lo includono. Vedi `docs/viewer-editor.md`.
+- Lo stile per elemento è disponibile solo dove Mermaid lo supporta
+  (flowchart, class, state, ER); per sequence/pie/gantt/timeline/... resta la
+  palette globale.
+- L'editing strutturale visuale è limitato ai flowchart.
+- Il layout dei nodi è automatico: non si trascinano i nodi in posizioni
+  libere.
 
 ## Struttura
 

@@ -1,4 +1,14 @@
 import { render as peleRender } from "pele";
+import {
+  applyThemeToSvg,
+  detectRenderer,
+  flattenThemeVariables,
+  mermaidThemeVariables,
+  resolveTheme,
+  type DiagramTheme,
+  type DiagramTokens,
+  type ThemeMode,
+} from "./diagram/theme";
 
 export interface ExtractedDiagram {
   ordinal: number;
@@ -11,6 +21,10 @@ export interface ExtractedDiagram {
 export interface RenderResult {
   svg: string;
   renderer: "pele" | "mermaid";
+  rendererId: string;
+  width: number;
+  height: number;
+  type: string;
 }
 
 const FENCE = /^(\s{0,3})(`{3,}|~{3,})\s*([\w-]*)\s*$/;
@@ -130,9 +144,11 @@ export function diagramType(source: string): string {
   const map: Record<string, string> = {
     graph: "flowchart",
     flowchart: "flowchart",
+    "flowchart-elk": "flowchart",
     sequenceDiagram: "sequence",
     classDiagram: "class",
     stateDiagram: "state",
+    "stateDiagram-v2": "state",
     stateDiagramV2: "state",
     erDiagram: "er",
     gantt: "gantt",
@@ -142,6 +158,8 @@ export function diagramType(source: string): string {
     quadrantChart: "quadrant",
     xychart: "xychart",
     sankey: "sankey",
+    "block-beta": "block",
+    block: "block",
     "C4Context": "c4",
     "C4Container": "c4",
     "C4Component": "c4",
@@ -153,7 +171,7 @@ export function diagramType(source: string): string {
 
 let mermaidApi: any = null;
 
-async function getMermaid(theme: "dark" | "light") {
+async function getMermaid(tokens: DiagramTokens) {
   if (!mermaidApi) {
     const module = await import("mermaid");
     mermaidApi = module.default;
@@ -162,8 +180,9 @@ async function getMermaid(theme: "dark" | "light") {
     startOnLoad: false,
     securityLevel: "strict",
     htmlLabels: false,
-    theme: theme === "dark" ? "dark" : "default",
-    fontFamily: "Inter, system-ui, sans-serif",
+    theme: "base",
+    fontFamily: tokens.font,
+    themeVariables: mermaidThemeVariables(tokens),
   });
   return mermaidApi;
 }
@@ -174,19 +193,72 @@ function errorMessage(error: unknown): string {
   return "Errore di rendering del diagramma";
 }
 
+function viewBoxSize(svg: string): { width: number; height: number } {
+  const match = svg.match(/viewBox="([^"]+)"/i);
+  if (match) {
+    const parts = match[1].trim().split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts.every((value) => Number.isFinite(value))) {
+      return { width: Math.max(1, parts[2]), height: Math.max(1, parts[3]) };
+    }
+  }
+  const width = svg.match(/\swidth="(\d+(?:\.\d+)?)"/i);
+  const height = svg.match(/\sheight="(\d+(?:\.\d+)?)"/i);
+  return {
+    width: width ? Math.max(1, Number(width[1])) : 800,
+    height: height ? Math.max(1, Number(height[1])) : 600,
+  };
+}
+
+export function validateSourceSync(source: string): { ok: boolean; error?: string } {
+  try {
+    peleRender(source);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+export function resolveDiagramTokens(
+  theme: DiagramTheme | ThemeMode = "dark",
+  mode: ThemeMode = "dark",
+): DiagramTokens {
+  if (typeof theme === "string") {
+    return resolveTheme({ preset: theme === "light" ? "light" : "dark" }, theme);
+  }
+  return resolveTheme(theme, mode);
+}
+
 export async function renderDiagram(
   source: string,
-  theme: "dark" | "light" = "dark",
+  theme: DiagramTheme | ThemeMode = "dark",
+  mode: ThemeMode = "dark",
 ): Promise<RenderResult> {
+  const tokens = resolveDiagramTokens(theme, mode);
   try {
-    const result = peleRender(source);
-    return { svg: result.svg, renderer: "pele" };
+    const result = peleRender(source, { fontFamily: tokens.font });
+    return {
+      svg: applyThemeToSvg(result.svg, tokens, "pele", { background: true }),
+      renderer: "pele",
+      rendererId: "",
+      width: result.width,
+      height: result.height,
+      type: diagramType(source),
+    };
   } catch (peleError) {
     try {
-      const mermaid = await getMermaid(theme);
+      const mermaid = await getMermaid(tokens);
       const id = `mc-${crypto.randomUUID()}`;
       const result = await mermaid.render(id, source);
-      return { svg: result.svg, renderer: "mermaid" };
+      const svg = applyThemeToSvg(result.svg, tokens, "mermaid", { background: true });
+      const size = viewBoxSize(svg);
+      return {
+        svg,
+        renderer: "mermaid",
+        rendererId: id,
+        width: size.width,
+        height: size.height,
+        type: diagramType(source),
+      };
     } catch (mermaidError) {
       throw new Error(
         `Pele: ${errorMessage(peleError)}\nMermaid: ${errorMessage(mermaidError)}`,
@@ -195,49 +267,55 @@ export async function renderDiagram(
   }
 }
 
-export type DiagramTheme = "dark" | "light";
-
-const PELE_PALETTES: Record<DiagramTheme, string> = {
-  dark: `--pele-bg:#0b0e14; --pele-fg:#e8ecf5; --pele-muted:#8f9ab3;
-         --pele-line:#61708f; --pele-surface:#171d2a; --pele-surface-alt:#1f2737;
-         --pele-border:#33405a; --pele-accent:#8ba4ff;`,
-  light: `--pele-bg:#ffffff; --pele-fg:#1a2233; --pele-muted:#64718a;
-          --pele-line:#8d99ad; --pele-surface:#f7f8fc; --pele-surface-alt:#eef2fa;
-          --pele-border:#d8dfec; --pele-accent:#4767e8;`,
-};
+export type { DiagramTheme } from "./diagram/theme";
 
 export function sanitizeSvgForExport(
   svg: string,
-  theme: DiagramTheme = "dark",
+  theme: DiagramTheme | ThemeMode = "dark",
+  options: { background?: boolean; mode?: ThemeMode } = {},
 ): string {
-  let clean = svg
+  const clean = svg
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, "")
     .replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "")
     .replace(/javascript:/gi, "")
     .replace(/(href|xlink:href)\s*=\s*"data:[^"]*"/gi, '$1="#"');
+  const tokens =
+    typeof theme === "string"
+      ? resolveDiagramTokens(theme, theme)
+      : resolveTheme(theme, options.mode ?? "dark");
+  const themed = applyThemeToSvg(clean, tokens, detectRenderer(clean), {
+    background: options.background ?? false,
+  });
+  return flattenThemeVariables(themed, tokens);
+}
 
-  if (!clean.includes("--pele-bg")) {
-    const style = `<style>
-      svg.pele, .pele {
-        ${PELE_PALETTES[theme]}
-        --pele-font:Inter,system-ui,sans-serif; --pele-radius:8px;
-      }
-    </style>`;
-    clean = clean.replace(/<svg([^>]*)>/i, `<svg$1>${style}`);
-  }
-  return clean;
+function withIntrinsicSize(svg: string): string {
+  const viewBox = svg.match(/viewBox="([^"]+)"/i);
+  if (!viewBox) return svg;
+  const parts = viewBox[1].trim().split(/[\s,]+/).map(Number);
+  if (parts.length !== 4 || !parts.every((value) => Number.isFinite(value))) return svg;
+  return svg.replace(/<svg\b([^>]*)>/i, (full, attrs: string) => {
+    if (/\swidth="\d+(\.\d+)?"/i.test(attrs) && /\sheight="\d+(\.\d+)?"/i.test(attrs)) {
+      return full;
+    }
+    const cleaned = attrs.replace(/\s(?:width|height)="[^"]*"/gi, "");
+    return `<svg${cleaned} width="${parts[2]}" height="${parts[3]}">`;
+  });
 }
 
 export async function svgToPngBase64(
   svg: string,
   scale = 2,
   background = "#0b0e14",
-  theme: DiagramTheme = "dark",
+  theme: DiagramTheme | ThemeMode = "dark",
+  mode: ThemeMode = "dark",
 ): Promise<string> {
-  const blob = new Blob([sanitizeSvgForExport(svg, theme)], {
-    type: "image/svg+xml;charset=utf-8",
-  });
+  const tokens = resolveDiagramTokens(theme, mode);
+  const clean = withIntrinsicSize(
+    sanitizeSvgForExport(svg, theme, { background: false, mode }),
+  );
+  const blob = new Blob([clean], { type: "image/svg+xml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   try {
     const image = new Image();
@@ -255,7 +333,7 @@ export async function svgToPngBase64(
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas non disponibile");
     if (background !== "transparent") {
-      ctx.fillStyle = background;
+      ctx.fillStyle = background === "theme" ? tokens.bg : background;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);

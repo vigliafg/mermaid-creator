@@ -39,6 +39,21 @@ describe("extractMermaidBlocks", () => {
     expect(blocks[0].closed).toBe(false);
   });
 
+  it("ignora i blocchi mc-theme senza perdere il diagramma", () => {
+    const text = [
+      "```mc-theme",
+      '{"preset":"terminal"}',
+      "```",
+      "```mermaid",
+      "flowchart LR",
+      "  A --> B",
+      "```",
+    ].join("\n");
+    const blocks = extractMermaidBlocks(text, { closedOnly: true });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].source).toBe("flowchart LR\n  A --> B");
+  });
+
   it("returns closed blocks when closedOnly is requested", () => {
     const text = [
       "Ecco il diagramma richiesto.",

@@ -14,6 +14,7 @@ export function App() {
   const loading = useApp((s) => s.loading);
   const view = useApp((s) => s.view);
   const theme = useApp((s) => s.settings.theme) ?? "dark";
+  const viewerExpanded = useApp((s) => s.viewerExpanded);
 
   useEffect(() => {
     void init();
@@ -38,7 +39,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${viewerExpanded ? "viewer-expanded" : ""}`}>
       <Sidebar />
       <div className="app-main">
         {view === "chat" && <ChatPane />}

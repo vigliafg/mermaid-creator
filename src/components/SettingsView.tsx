@@ -95,6 +95,54 @@ export function SettingsView() {
 
       <section className="settings-card">
         <div className="settings-icon">
+          <Sun size={19} />
+        </div>
+        <div className="settings-body">
+          <h2>Area di lavoro</h2>
+          <p className="muted">
+            Sfondo e griglia attorno al diagramma. Il colore del canvas del singolo
+            diagramma si imposta dalla tab Tema del workspace.
+          </p>
+          <div className="setting-row">
+            <div>
+              <strong>Sfondo</strong>
+              <div className="muted small">
+                {settings.workspace_bg && settings.workspace_bg !== "auto"
+                  ? settings.workspace_bg
+                  : "Segue il tema dell'app"}
+              </div>
+            </div>
+            <div className="row-actions">
+              <input
+                type="color"
+                value={
+                  /^#[0-9a-fA-F]{6}$/.test(settings.workspace_bg ?? "")
+                    ? settings.workspace_bg
+                    : settings.theme === "light"
+                      ? "#f4f6fb"
+                      : "#0b0e14"
+                }
+                onChange={(event) => void setSetting("workspace_bg", event.target.value)}
+                aria-label="Sfondo area di lavoro"
+              />
+              <button className="btn btn-ghost tiny" onClick={() => void setSetting("workspace_bg", "auto")}>
+                Auto
+              </button>
+            </div>
+          </div>
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={settings.workspace_grid !== "0"}
+              onChange={(event) => void setSetting("workspace_grid", event.target.checked ? "1" : "0")}
+            />
+            <span>Mostra griglia</span>
+          </label>
+        </div>
+      </section>
+
+      <section className="settings-card">
+        <div className="settings-icon">
           <Save size={19} />
         </div>
         <div className="settings-body">

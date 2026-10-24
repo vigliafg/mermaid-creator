@@ -2,6 +2,13 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { api } from "./lib/ipc";
 import { extractMermaidBlocks, diagramType } from "./lib/diagram";
+import { mergeAfterAi } from "./lib/diagram/document";
+import { parseThemeMap, resolveTheme, themeForId, type DiagramTheme } from "./lib/diagram/theme";
+import {
+  applyThemeCommand,
+  extractThemeCommand,
+  themeCommandSummary,
+} from "./lib/diagram/themeCommand";
 import { MAX_FILES, processAttachment } from "./lib/files";
 import type {
   AppInfo,
@@ -44,6 +51,8 @@ interface AppStore {
   libraryQuery: string;
   selectedDiagramId: string | null;
   targetDiagramId: string | null;
+  diagramDirty: boolean;
+  viewerExpanded: boolean;
   versions: DiagramVersion[];
   pendingAttachments: PendingAttachment[];
   streaming: boolean;
@@ -65,7 +74,11 @@ interface AppStore {
   removePendingAttachment: (id: string) => Promise<void>;
   selectDiagram: (id: string | null) => Promise<void>;
   setTarget: (id: string | null) => void;
-  saveDiagram: (source: string, title?: string) => Promise<void>;
+  setDiagramDirty: (dirty: boolean) => void;
+  toggleViewerExpanded: () => void;
+  setDiagramTheme: (id: string, theme: DiagramTheme) => Promise<void>;
+  clearDiagramThemes: (ids: string[]) => Promise<void>;
+  saveDiagram: (source: string, title?: string) => Promise<boolean>;
   restoreVersion: (versionId: string) => Promise<void>;
   toggleLibrary: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
@@ -94,6 +107,8 @@ export const useApp = create<AppStore>((set, get) => ({
   libraryQuery: "",
   selectedDiagramId: null,
   targetDiagramId: null,
+  diagramDirty: false,
+  viewerExpanded: false,
   versions: [],
   pendingAttachments: [],
   streaming: false,
@@ -157,6 +172,10 @@ export const useApp = create<AppStore>((set, get) => ({
       toast.info("Annulla la generazione in corso prima di aprire una nuova chat");
       return;
     }
+    if (get().diagramDirty) {
+      toast.warning("Salva o annulla le modifiche al diagramma prima di aprire una nuova chat");
+      return;
+    }
     const modelId = get().settings.model_id || get().models[0]?.id || "";
     try {
       const conversation = await api.conversationCreate(
@@ -196,6 +215,10 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   selectConversation: async (id) => {
+    if (get().diagramDirty) {
+      toast.warning("Salva o annulla le modifiche al diagramma prima di cambiare conversazione");
+      return;
+    }
     set({
       activeConversationId: id,
       view: "chat",
@@ -224,8 +247,16 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   deleteConversation: async (id) => {
+    if (get().diagramDirty && get().activeConversationId === id) {
+      toast.warning("Salva o annulla le modifiche al diagramma prima di eliminare la conversazione");
+      return;
+    }
+    const removedThemeIds = get()
+      .diagrams.filter((item) => item.conversationId === id && !item.inLibrary)
+      .map((item) => item.id);
     try {
       await api.conversationDelete(id);
+      await get().clearDiagramThemes(removedThemeIds);
       const conversations = get().conversations.filter((item) => item.id !== id);
       set({ conversations });
       if (get().activeConversationId === id) {
@@ -239,6 +270,11 @@ export const useApp = create<AppStore>((set, get) => ({
 
   sendMessage: async (text) => {
     if (get().streaming) return;
+    const targetId = get().targetDiagramId;
+    if (targetId && get().diagramDirty) {
+      toast.error("Salva le modifiche al diagramma prima di inviare la richiesta");
+      return;
+    }
     if (!get().keyStatus?.configured) {
       toast.error("Configura una API key OpenRouter nelle impostazioni");
       return;
@@ -264,7 +300,21 @@ export const useApp = create<AppStore>((set, get) => ({
       }
 
       const requestId = crypto.randomUUID();
-      const targetId = get().targetDiagramId;
+      const targetDiagram =
+        get().diagrams.find((item) => item.id === targetId) ??
+        get().library.find((item) => item.id === targetId) ??
+        null;
+      const baseSource = targetDiagram?.source ?? null;
+      const mode = get().settings.theme === "light" ? "light" : "dark";
+      const selectedTheme = targetDiagram
+        ? themeForId(get().settings, targetDiagram.id)
+        : null;
+      const targetTheme = selectedTheme
+        ? JSON.stringify({
+            preset: selectedTheme.preset,
+            tokens: resolveTheme(selectedTheme, mode),
+          })
+        : null;
       const attachmentIds = get().pendingAttachments.map((item) => item.id);
       set({
         streaming: true,
@@ -296,6 +346,7 @@ export const useApp = create<AppStore>((set, get) => ({
                 toast.error("Evento di completamento senza messageId");
                 return;
               }
+              const themeCommand = extractThemeCommand(data.content);
               const blocks = extractMermaidBlocks(data.content, {
                 closedOnly: true,
               });
@@ -305,7 +356,33 @@ export const useApp = create<AppStore>((set, get) => ({
                 source: block.source,
                 diagramType: diagramType(block.source),
               }));
-              await api.diagramsSync(
+              const currentTarget = targetId
+                ? get().diagrams.find((item) => item.id === targetId) ??
+                  get().library.find((item) => item.id === targetId) ??
+                  null
+                : null;
+              const changedDuringStream =
+                Boolean(targetId && baseSource !== null && currentTarget && currentTarget.source !== baseSource);
+              if (targetId && (get().diagramDirty || changedDuringStream)) {
+                toast.warning(
+                  "Il diagramma è cambiato durante la generazione: aggiornamento non applicato. Salva e riprova.",
+                );
+                const messages = await api.messagesList(conversationId!);
+                set({ messages });
+                return;
+              }
+              if (targetId && baseSource !== null && items[0]) {
+                const merged = mergeAfterAi(baseSource, items[0].source, items[0].diagramType);
+                items[0] = { ...items[0], source: merged.source };
+                if (merged.dropped.length > 0) {
+                  toast.warning(
+                    `Stili non applicati a ${merged.dropped.length} elemento/i: ${merged.dropped
+                      .slice(0, 3)
+                      .join(", ")}${merged.dropped.length > 3 ? "…" : ""}`,
+                  );
+                }
+              }
+              const synced = await api.diagramsSync(
                 conversationId!,
                 messageId,
                 targetId,
@@ -316,19 +393,32 @@ export const useApp = create<AppStore>((set, get) => ({
                 api.diagramsList(conversationId!),
                 api.conversationsList(),
               ]);
-              const first = targetId ?? diagrams[0]?.id ?? null;
+              const first = targetId ?? synced[0]?.id ?? diagrams[0]?.id ?? null;
               set({
                 messages,
                 diagrams,
                 conversations,
                 selectedDiagramId: first,
                 targetDiagramId: targetId ? first : null,
+                diagramDirty: false,
               });
               if (first) {
                 await get().selectDiagram(first);
                 get().setTarget(targetId ? first : null);
               }
-              if (targetId && items.length === 0) {
+              if (themeCommand) {
+                const themeId = targetId ?? synced[0]?.id ?? first;
+                if (themeId) {
+                  const currentMode = get().settings.theme === "light" ? "light" : "dark";
+                  const current = resolveTheme(themeForId(get().settings, themeId), currentMode);
+                  const nextTheme = applyThemeCommand(themeCommand, current);
+                  await get().setDiagramTheme(themeId, nextTheme);
+                  toast.success(`Tema aggiornato: ${themeCommandSummary(themeCommand)}`);
+                } else {
+                  toast.warning("L'AI ha proposto un tema ma non c'è un diagramma a cui applicarlo");
+                }
+              }
+              if (targetId && items.length === 0 && !themeCommand) {
                 toast.warning("Il modello non ha restituito un diagramma da aggiornare");
               }
             } catch (error) {
@@ -358,6 +448,7 @@ export const useApp = create<AppStore>((set, get) => ({
           modelId,
           text,
           targetDiagramId: targetId,
+          targetTheme,
           attachmentIds,
         },
         handleEvent,
@@ -426,6 +517,10 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   selectDiagram: async (id) => {
+    if (get().diagramDirty && id !== get().selectedDiagramId) {
+      toast.warning("Salva o annulla le modifiche al diagramma prima di cambiare");
+      return;
+    }
     set({ selectedDiagramId: id, targetDiagramId: id, versions: [] });
     if (!id) return;
     try {
@@ -438,9 +533,33 @@ export const useApp = create<AppStore>((set, get) => ({
 
   setTarget: (id) => set({ targetDiagramId: id }),
 
+  setDiagramDirty: (dirty) => set({ diagramDirty: dirty }),
+
+  toggleViewerExpanded: () => set((state) => ({ viewerExpanded: !state.viewerExpanded })),
+
+  setDiagramTheme: async (id, theme) => {
+    const current = parseThemeMap(get().settings.diagram_themes);
+    if (theme.preset === "auto") delete current[id];
+    else current[id] = theme;
+    await get().setSetting("diagram_themes", JSON.stringify(current));
+  },
+
+  clearDiagramThemes: async (ids) => {
+    if (!ids.length) return;
+    const current = parseThemeMap(get().settings.diagram_themes);
+    let changed = false;
+    for (const id of ids) {
+      if (id in current) {
+        delete current[id];
+        changed = true;
+      }
+    }
+    if (changed) await get().setSetting("diagram_themes", JSON.stringify(current));
+  },
+
   saveDiagram: async (source, title) => {
     const id = get().selectedDiagramId;
-    if (!id) return;
+    if (!id) return false;
     try {
       const diagram = await api.diagramSaveVersion(id, source, title);
       set((state) => ({
@@ -448,16 +567,22 @@ export const useApp = create<AppStore>((set, get) => ({
         library: state.library.map((item) => (item.id === diagram.id ? diagram : item)),
       }));
       const versions = await api.diagramVersions(id);
-      set({ versions });
+      set({ versions, diagramDirty: false });
       toast.success("Versione salvata");
+      return true;
     } catch (error) {
       toast.error(`Salvataggio versione: ${errorText(error)}`);
+      return false;
     }
   },
 
   restoreVersion: async (versionId) => {
     const id = get().selectedDiagramId;
     if (!id) return;
+    if (get().diagramDirty) {
+      toast.warning("Salva o annulla le modifiche al diagramma prima di ripristinare");
+      return;
+    }
     try {
       const diagram = await api.diagramRestore(id, versionId);
       set((state) => ({
@@ -465,7 +590,7 @@ export const useApp = create<AppStore>((set, get) => ({
         library: state.library.map((item) => (item.id === diagram.id ? diagram : item)),
       }));
       const versions = await api.diagramVersions(id);
-      set({ versions });
+      set({ versions, diagramDirty: false });
       toast.success("Versione ripristinata");
     } catch (error) {
       toast.error(`Ripristino: ${errorText(error)}`);
@@ -510,6 +635,7 @@ export const useApp = create<AppStore>((set, get) => ({
   deleteDiagram: async (id) => {
     try {
       await api.diagramDelete(id);
+      await get().clearDiagramThemes([id]);
       set((state) => ({
         diagrams: state.diagrams.filter((item) => item.id !== id),
         library: state.library.filter((item) => item.id !== id),

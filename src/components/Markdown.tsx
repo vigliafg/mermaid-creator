@@ -1,8 +1,10 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Workflow } from "lucide-react";
+import { stripThemeCommands } from "../lib/diagram/themeCommand";
 
 export function Markdown({ content }: { content: string }) {
+  const visible = stripThemeCommands(content);
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -30,7 +32,7 @@ export function Markdown({ content }: { content: string }) {
           },
         }}
       >
-        {content}
+        {visible}
       </ReactMarkdown>
     </div>
   );
