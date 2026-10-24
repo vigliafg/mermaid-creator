@@ -18,6 +18,26 @@ pub fn run() {
                 .map_err(|e| format!("Impossibile determinare app_data_dir: {e}"))?;
             let (data_dir, connection) = db::init(&app_data_dir)?;
             app.manage(state::AppState::new(connection, data_dir));
+
+            // Fit the window to the monitor before maximizing. This keeps the
+            // composer and titlebar usable even on small/high-DPI work areas
+            // and on compositors that ignore the initial size.
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(Some(monitor)) = window.current_monitor() {
+                    let scale = monitor.scale_factor().max(1.0);
+                    let size = monitor.size();
+                    let logical_width = size.width as f64 / scale;
+                    let logical_height = size.height as f64 / scale;
+                    let width = (logical_width - 80.0).clamp(900.0, 1280.0);
+                    let height = (logical_height - 120.0).clamp(540.0, 820.0);
+                    let origin = monitor.position();
+                    let x = origin.x as f64 / scale + (logical_width - width) / 2.0;
+                    let y = origin.y as f64 / scale + (logical_height - height) / 2.0;
+                    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+                    let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+                }
+                let _ = window.maximize();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

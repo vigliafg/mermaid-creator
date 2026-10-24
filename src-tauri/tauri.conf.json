@@ -13,10 +13,12 @@
     "windows": [
       {
         "title": "Mermaid Creator",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1040,
-        "minHeight": 680,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 540,
+        "maximized": true,
+        "center": true,
         "resizable": true,
         "dragDropEnabled": false
       }
