@@ -97,3 +97,11 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Aggiorna le note con il changelog dettagliato
+        if: matrix.platform == 'ubuntu-24.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/release-notes.mjs "${GITHUB_REF_NAME}" CHANGELOG.md > /tmp/release-notes.md
+          gh release edit "${GITHUB_REF_NAME}" --notes-file /tmp/release-notes.md
