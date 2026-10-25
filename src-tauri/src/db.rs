@@ -1229,6 +1229,25 @@ mod tests {
     }
 
     #[test]
+    fn forced_version_is_created_without_changes() {
+        let mut conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        let source = "flowchart LR\n A-->B";
+        conn.execute("UPDATE diagrams SET source=?1 WHERE id='d1'", params![source])
+            .unwrap();
+        create_board(&conn, "d1", &scene("a"), "diagram", Some(source)).unwrap();
+
+        save_diagram_version(&mut conn, "d1", source, None, false).unwrap();
+        save_diagram_version(&mut conn, "d1", source, None, false).unwrap();
+        assert_eq!(versions(&conn, "d1").len(), 1);
+
+        save_diagram_version(&mut conn, "d1", source, None, true).unwrap();
+        let list = versions(&conn, "d1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].board_snapshot.as_deref(), Some(scene("a").as_str()));
+    }
+
+    #[test]
     fn restoring_a_version_with_snapshot_restores_both_sides() {
         let mut conn = migrated();
         insert_diagram(&conn, "d1", None, false);
