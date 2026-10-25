@@ -112,9 +112,12 @@ In modalità Lavagna le scorciatoie dell'app sono disattivate: `V`, `H`,
   base_source, created_at, updated_at)` e colonna nullable `board_snapshot` in
   `diagram_versions`; migrazione `user_version = 2` in transazione.
 - **Distribuzione del fork**: l'app consuma
-  `@excalidraw/mermaid-to-excalidraw` da un tarball `npm pack` versionato. In
-  questo checkout è un tarball locale; per la CI va pubblicato come asset di una
-  GitHub Release (`fork-v2.4.0`) e la dipendenza aggiornata con l'URL esatto.
+  `@excalidraw/mermaid-to-excalidraw` dal tarball `npm pack` versionato in
+  `vendor/` (commit sorgente e sha256 in `vendor/README.md`). È versionato nel
+  repo per rendere `npm ci` riproducibile senza il checkout del fork accanto
+  all'app. La Release GitHub `fork-v2.4.0` è preparata
+  (`.github/workflows/release.yml`) e può sostituire il file locale con l'URL
+  dell'asset quando si autorizza il push.
 
 ## File principali
 

@@ -142,8 +142,9 @@ npm run test:render   # parità Pele/Mermaid, richiede Chrome (salta se assente)
   lavagna».
 - Il tema della lavagna è congelato alla creazione; per riallinearlo serve
   «Aggiorna» dal sorgente. Vedi `docs/board.md`.
-- Il convertitore del fork è consumato da un tarball locale in questo checkout;
-  per la CI va pubblicato come asset di una GitHub Release.
+- Il convertitore del fork è consumato dal tarball versionato in `vendor/`
+  (provenienza e sha256 in `vendor/README.md`); la Release GitHub può
+  sostituirlo quando si autorizza il push.
 
 ## Struttura
 
