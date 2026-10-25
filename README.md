@@ -11,9 +11,11 @@ Prima versione utilizzabile (0.1.0):
 - estrazione automatica dei blocchi Mermaid dalle risposte;
 - rendering Pele con fallback Mermaid.js;
 - workspace/editor espandibile a tutta finestra (chat e cronologia si
-  ritirano in una barra con chevron), con pan, zoom alla rotella, fit, temi e
-  preset (13 temi, inclusi Neon, Blueprint, Terminal, Mono e altri), stile per
-  elemento (dove Mermaid lo consente), modifica label/struttura flowchart,
+  ritirano in una barra con chevron), con strumenti selezione/pan, zoom alla
+  rotella, fit, temi e preset (13 temi, inclusi Neon, Blueprint, Terminal,
+  Mono e altri), stile per elemento (dove Mermaid lo consente), modifica
+  label/struttura flowchart, punte delle connessioni flowchart,
+  direzione del layout per flowchart/class/state/ER,
   anteprima live del sorgente, versioni e ripristino; comandi AI per preset e
   palette; fascia verticale dei controlli a destra del diagramma, richiudibile;
 - libreria con ricerca, preferiti ed export SVG/PNG/.mmd;

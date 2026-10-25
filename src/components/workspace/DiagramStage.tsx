@@ -47,6 +47,7 @@ interface Props {
   diagramKey: string;
   renderer: "pele" | "mermaid" | "";
   model: DiagramModel | null;
+  tool: "select" | "pan";
   selections: Selection[];
   onSelect: (selection: Selection | null, additive: boolean) => void;
   onStartLabelEdit: (nodeId: string, rect: { left: number; top: number; width: number; height: number }) => void;
@@ -86,6 +87,7 @@ export const DiagramStage = forwardRef<DiagramStageHandle, Props>(function Diagr
     diagramKey,
     renderer,
     model,
+    tool,
     selections,
     onSelect,
     onStartLabelEdit,
@@ -311,7 +313,7 @@ export const DiagramStage = forwardRef<DiagramStageHandle, Props>(function Diagr
     if (event.button !== 0) return;
     const target = event.target as Element;
     if (target.closest("button, input, textarea, select, summary")) return;
-    const selection = selectionFromTarget(target);
+    const selection = tool === "select" ? selectionFromTarget(target) : null;
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointersRef.current.size === 2) {
       const [a, b] = Array.from(pointersRef.current.values());
@@ -401,15 +403,17 @@ export const DiagramStage = forwardRef<DiagramStageHandle, Props>(function Diagr
     } catch {
       // best effort
     }
-    if (selection && moved < 5) {
-      onSelect(selection, event.shiftKey);
-    } else if (!selection && moved < 5) {
-      onSelect(null, false);
+    if (tool === "select") {
+      if (selection && moved < 5) {
+        onSelect(selection, event.shiftKey);
+      } else if (!selection && moved < 5) {
+        onSelect(null, false);
+      }
     }
   };
 
   const doubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!canEditLabels) return;
+    if (tool !== "select" || !canEditLabels) return;
     const element = (event.target as Element).closest("[data-mc-kind='node']");
     if (!element) return;
     const nodeId = element.getAttribute("data-mc-id");
@@ -439,10 +443,14 @@ export const DiagramStage = forwardRef<DiagramStageHandle, Props>(function Diagr
 
   return (
     <div
-      className="diagram-stage"
+      className={`diagram-stage tool-${tool}`}
       ref={containerRef}
       tabIndex={0}
-      aria-label="Diagramma interattivo: usa la rotella per lo zoom e trascina per spostarti"
+      aria-label={
+        tool === "select"
+          ? "Diagramma interattivo: clicca gli elementi per selezionarli, trascina sullo sfondo per spostarti"
+          : "Diagramma interattivo: trascina per spostarti, usa i pulsanti per lo zoom"
+      }
       onPointerDown={(event) => {
         containerRef.current?.focus();
         pointerDown(event);

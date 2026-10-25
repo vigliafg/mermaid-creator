@@ -7,6 +7,7 @@ import { parseThemeMap, resolveTheme, themeForId, type DiagramTheme } from "./li
 import {
   applyThemeCommand,
   extractThemeCommand,
+  hasThemeCommandFence,
   themeCommandSummary,
 } from "./lib/diagram/themeCommand";
 import { MAX_FILES, processAttachment } from "./lib/files";
@@ -235,11 +236,10 @@ export const useApp = create<AppStore>((set, get) => ({
         messages,
         diagrams,
         selectedDiagramId: selected,
-        targetDiagramId: null,
+        targetDiagramId: selected,
       });
       if (selected) {
         await get().selectDiagram(selected);
-        get().setTarget(null);
       }
     } catch (error) {
       toast.error(`Conversazione: ${errorText(error)}`);
@@ -310,10 +310,11 @@ export const useApp = create<AppStore>((set, get) => ({
         ? themeForId(get().settings, targetDiagram.id)
         : null;
       const targetTheme = selectedTheme
-        ? JSON.stringify({
-            preset: selectedTheme.preset,
-            tokens: resolveTheme(selectedTheme, mode),
-          })
+        ? JSON.stringify(
+            selectedTheme.preset === "custom"
+              ? { preset: "custom", tokens: resolveTheme(selectedTheme, mode) }
+              : { preset: selectedTheme.preset },
+          )
         : null;
       const attachmentIds = get().pendingAttachments.map((item) => item.id);
       set({
@@ -347,6 +348,7 @@ export const useApp = create<AppStore>((set, get) => ({
                 return;
               }
               const themeCommand = extractThemeCommand(data.content);
+              const themeRequested = hasThemeCommandFence(data.content);
               const blocks = extractMermaidBlocks(data.content, {
                 closedOnly: true,
               });
@@ -393,21 +395,34 @@ export const useApp = create<AppStore>((set, get) => ({
                 api.diagramsList(conversationId!),
                 api.conversationsList(),
               ]);
-              const first = targetId ?? synced[0]?.id ?? diagrams[0]?.id ?? null;
+              // Il diagramma toccato da questa risposta è quello collegato al
+              // messaggio appena salvato. Non usare synced[0]: è il primo della
+              // conversazione e in presenza di più diagrammi faceva applicare
+              // tema e selezione al diagramma sbagliato.
+              const affectedId =
+                synced.find((item) => item.messageId === messageId)?.id ?? null;
+              const first =
+                targetId ??
+                affectedId ??
+                get().selectedDiagramId ??
+                synced[0]?.id ??
+                diagrams[0]?.id ??
+                null;
+              const nextTarget = targetId ? first : affectedId;
               set({
                 messages,
                 diagrams,
                 conversations,
                 selectedDiagramId: first,
-                targetDiagramId: targetId ? first : null,
+                targetDiagramId: nextTarget,
                 diagramDirty: false,
               });
               if (first) {
                 await get().selectDiagram(first);
-                get().setTarget(targetId ? first : null);
+                get().setTarget(nextTarget);
               }
               if (themeCommand) {
-                const themeId = targetId ?? synced[0]?.id ?? first;
+                const themeId = targetId ?? affectedId ?? first;
                 if (themeId) {
                   const currentMode = get().settings.theme === "light" ? "light" : "dark";
                   const current = resolveTheme(themeForId(get().settings, themeId), currentMode);
@@ -417,6 +432,10 @@ export const useApp = create<AppStore>((set, get) => ({
                 } else {
                   toast.warning("L'AI ha proposto un tema ma non c'è un diagramma a cui applicarlo");
                 }
+              } else if (themeRequested) {
+                toast.warning(
+                  "Il modello ha proposto un tema in un formato non riconosciuto: nessun tema è stato applicato.",
+                );
               }
               if (targetId && items.length === 0 && !themeCommand) {
                 toast.warning("Il modello non ha restituito un diagramma da aggiornare");

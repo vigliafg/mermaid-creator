@@ -3,6 +3,7 @@ import { resolveTheme } from "./theme";
 import {
   applyThemeCommand,
   extractThemeCommand,
+  hasThemeCommandFence,
   parseThemeCommand,
   stripThemeCommands,
 } from "./themeCommand";
@@ -53,5 +54,50 @@ describe("comandi tema AI", () => {
     const content = `Ecco il diagramma.\n\n\`\`\`mc-theme\n{"preset":"ocean"}\n\`\`\`\n\nFatto.`;
     expect(extractThemeCommand(content)).toEqual({ preset: "ocean" });
     expect(stripThemeCommands(content)).toBe("Ecco il diagramma.\n\nFatto.");
+  });
+
+  it("accetta il formato YAML-like usato da alcuni modelli", () => {
+    expect(parseThemeCommand("preset: contrast")).toEqual({ preset: "contrast" });
+    expect(parseThemeCommand("preset = ocean\nbg: #041b2d")).toMatchObject({
+      preset: "ocean",
+      tokens: { bg: "#041b2d" },
+    });
+    expect(parseThemeCommand("contrast")).toEqual({ preset: "contrast" });
+    expect(extractThemeCommand("```mc-theme\npreset: contrast\n```")).toEqual({
+      preset: "contrast",
+    });
+  });
+
+  it("normalizza i nomi dei temi Mermaid e gli alias italiani", () => {
+    expect(parseThemeCommand('{"preset":"default"}')).toEqual({ preset: "light" });
+    expect(parseThemeCommand('{"preset":"neutral"}')).toEqual({ preset: "mono" });
+    expect(parseThemeCommand('{"preset":"contrasto"}')).toEqual({ preset: "contrast" });
+    expect(parseThemeCommand('{"preset":"forest"}')).toBeNull();
+  });
+
+  it("non lascia che la palette corrente sovrascriva un nuovo preset", () => {
+    const current = resolveTheme({ preset: "ocean" }, "dark");
+    const command = parseThemeCommand(
+      `{"preset":"contrast","tokens":${JSON.stringify(current)}}`,
+    );
+    expect(command).not.toBeNull();
+    const theme = applyThemeCommand(command!, current);
+    expect(theme).toEqual({ preset: "contrast" });
+  });
+
+  it("mantiene i token davvero diversi quando c'è anche un preset", () => {
+    const current = resolveTheme({ preset: "ocean" }, "dark");
+    const theme = applyThemeCommand(
+      { preset: "contrast", tokens: { bg: current.bg, accent: "#ff00ff" } },
+      current,
+    );
+    expect(theme.preset).toBe("custom");
+    expect(theme.tokens?.bg).toBe(resolveTheme({ preset: "contrast" }, "dark").bg);
+    expect(theme.tokens?.accent).toBe("#ff00ff");
+  });
+
+  it("riconosce la presenza di un fence anche quando il contenuto è invalido", () => {
+    expect(hasThemeCommandFence('```mc-theme\nnon un tema\n```')).toBe(true);
+    expect(hasThemeCommandFence("nessun blocco")).toBe(false);
   });
 });

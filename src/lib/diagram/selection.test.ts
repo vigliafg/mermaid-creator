@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readModel } from "./document";
-import { edgeIndexFromDataId, resolveMermaidNodeId, toggleSelection, makeSelection } from "./selection";
+import { edgeIndexFromDataId, resolveMermaidNodeId, selectionLabel, toggleSelection, makeSelection } from "./selection";
 
 describe("selezione", () => {
   it("risolve gli id DOM di Mermaid", () => {
@@ -21,10 +21,24 @@ describe("selezione", () => {
   });
 
   it("risolve gli archi da data-id", () => {
-    const model = readModel("flowchart LR\nA-->B\nA-->C");
-    expect(edgeIndexFromDataId("L_A_B_0", model)).toBe(0);
-    expect(edgeIndexFromDataId("L_A_C_0", model)).toBe(1);
-    expect(edgeIndexFromDataId("nope", model)).toBeNull();
+    const flow = readModel("flowchart LR\nA-->B\nA-->C");
+    expect(edgeIndexFromDataId("L_A_B_0", flow)).toBe(0);
+    expect(edgeIndexFromDataId("L_A_C_0", flow)).toBe(1);
+    expect(edgeIndexFromDataId("nope", flow)).toBeNull();
+    const klass = readModel("classDiagram\n  class Animal\n  class Duck\n  Animal <|-- Duck");
+    expect(edgeIndexFromDataId("id_Animal_Duck_1", klass)).toBe(0);
+    const er = readModel("erDiagram\n  CUSTOMER ||--o{ ORDER : places");
+    expect(edgeIndexFromDataId("id_entity-CUSTOMER-0_entity-ORDER-1_0", er)).toBe(0);
+    const erMultiple = readModel(
+      "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  CUSTOMER ||--o{ ORDER : ships",
+    );
+    expect(edgeIndexFromDataId("id_entity-CUSTOMER-0_entity-ORDER-1_0", erMultiple)).toBe(0);
+    expect(edgeIndexFromDataId("id_entity-CUSTOMER-0_entity-ORDER-1_1", erMultiple)).toBe(1);
+  });
+
+  it("mostra le etichette dei nodi negli estremi degli archi", () => {
+    const model = readModel("erDiagram\n  CUSTOMER ||--o{ ORDER : places");
+    expect(selectionLabel(model, makeSelection("edge", "0", 0))).toBe("CUSTOMER → ORDER");
   });
 
   it("fa toggle della selezione multipla", () => {

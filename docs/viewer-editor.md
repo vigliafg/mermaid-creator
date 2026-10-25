@@ -14,13 +14,21 @@ solo un'anteprima, ma un editor bidirezionale fra sorgente Mermaid e SVG.
 - Quando la finestra è stretta la fascia si restringe (max 60% del workspace);
   chiudendola il diagramma recupera tutto lo spazio.
 
-## Navigazione
+## Navigazione e strumenti
+
+La toolbar ha due strumenti:
+
+- **Freccia** (`MousePointer2`, scorciatoia `V`): modalità selezione oggetti.
+  Clicca un nodo, un arco o un gruppo per selezionarlo; trascina sullo sfondo
+  per spostare la vista. È la modalità predefinita.
+- **Mano** (`Hand`, scorciatoia `H`): modalità pan. Trascina ovunque per
+  spostare la vista senza selezionare gli elementi.
 
 - **Rotella**: zoom centrato sul puntatore.
 - **Shift + rotella**: pan orizzontale.
-- **Trascina sullo sfondo**: pan.
 - **Pinch** (touch/trackpad): zoom e pan.
-- **Doppio click su un nodo**: modifica dell'etichetta inline.
+- **Doppio click su un nodo** (modalità selezione): modifica dell'etichetta
+  inline.
 - **F** (stage focalizzato): adatta il diagramma.
 - **0**: dimensione reale.
 - **+ / −**: zoom.
@@ -65,6 +73,13 @@ L'app applica il tema, nasconde il blocco dalla trascrizione e mostra un
 avviso. I token non citati restano quelli correnti. Il blocco non viene salvato
 nel `.mmd` né nel sorgente del diagramma.
 
+Il parser accetta sia JSON sia la forma semplice `preset: nome` (utile perché
+alcuni modelli scrivono YAML invece di JSON). Se il blocco non è interpretabile,
+la chat lo segnala e non applica nulla, invece di lasciare il tema precedente
+senza spiegazione. Quando è presente un preset, i token uguali a quelli già in
+uso vengono ignorati: un cambio preset non viene sovrascritto dalla palette
+precedente rimandata indietro dal modello.
+
 ## Elementi
 
 La tab **Elemento** permette di:
@@ -74,16 +89,38 @@ La tab **Elemento** permette di:
 - modificare riempimento, cornice, spessore, tratteggio, colore testo,
   opacità, raggio, font e grassetto;
 - applicare lo stile a tutti i nodi o a tutti gli archi;
+- per gli archi di un **flowchart**, scegliere il tipo di punta (freccia
+  singola o doppia, cerchio, croce, nessuna punta, tratteggiata, spessa) e
+  invertire gli estremi con **Inverti**, così la punta singola passa da
+  destra a sinistra;
 - ripristinare un elemento;
 - vedere i rapporti di contrasto e correggere il testo con bianco/nero o con
   il preset `Contrasto`. Le soglie pratiche sono: testo 4.5:1; bordo/fill e
   box/sfondo segnalati sotto 1.2:1, così i temi decorativi non producono
   falsi allarmi ma il caso "box quasi uguale al fondo" viene rilevato.
 
-Per i flowchart si possono anche cambiare forma, direzione del layout,
-aggiungere nodi, connettere nodi e eliminare elementi. L'eliminazione lavora
-per righe: se un nodo è in una catena, vengono rimosse le righe che lo
-contengono (la UI lo conferma prima).
+Per i flowchart si possono anche cambiare forma, aggiungere nodi, connettere
+nodi ed eliminare elementi. L'eliminazione lavora per righe: se un nodo è in
+una catena, vengono rimosse le righe che lo contengono (la UI lo conferma
+prima).
+
+La **direzione del layout** è modificabile dalla toolbar per flowchart, class,
+state ed ER. Le opzioni sono `Verticale ↓` (TB), `Verticale ↑` (BT),
+`Orizzontale →` (LR) e `Orizzontale ←` (RL). Nei flowchart la direzione vive
+nell'intestazione (`flowchart LR` / `graph LR`); negli altri tipi viene scritta
+come direttiva `direction LR` subito dopo l'intestazione, sostituendo quella
+eventuale. `TD` è accettato in lettura come alias di `TB`.
+
+Per **class** ed **ER** le linee di relazione sono selezionabili e eliminabili
+con lo stesso meccanismo, anche se non ne è supportato lo stile per-arco.
+
+Le punte si modificano solo nei **flowchart**, perché Mermaid codifica il tipo
+di freccia nella sintassi della connessione. Gli state diagram accettano solo
+`-->`; class ed ER usano simboli di relazione diversi (ereditarietà,
+composizione, cardinalità) e restano modificabili dal sorgente. La modifica
+delle punte preserva etichette, forme dei nodi e le altre connessioni della
+stessa riga; se una riga non è interpretabile, il controllo viene disabilitato
+con una spiegazione.
 
 ### Tipi supportati per lo stile per elemento
 
@@ -92,16 +129,22 @@ che il renderer accetta:
 
 | Tipo | Nodi | Archi | Gruppi |
 |---|---|---|---|
-| flowchart | sì | sì | sì |
-| class | sì | no | — |
-| state | sì | sì | — |
-| er | sì | no | — |
+| flowchart | sì | sì (stile + selezione) | sì |
+| class | sì | selezione sì, stile no | — |
+| state | sì | sì (stile + selezione) | — |
+| er | sì | selezione sì, stile no | — |
 | sequence, pie, gantt, timeline, journey, quadrant, xychart, sankey, mindmap | no | no | no |
 
 Per i tipi senza stile per elemento resta la palette globale. I controlli non
 disponibili sono disabilitati con una spiegazione. Il testo delle etichette
 degli archi non è stilizzabile separatamente: `linkStyle` controlla la linea,
 non il label (limite di Mermaid).
+
+Nel caso di **class** ed **ER** le relazioni non hanno uno stile per-arco
+affidabile in Mermaid, ma sono comunque selezionabili dal canvas o dall'elenco
+`Archi`: puoi ispezionarle, andare alla riga sorgente ed eliminarle. I controlli
+di colore/spessore/tratteggio restano disattivati con la spiegazione nel
+pannello.
 
 ## Sorgente e bidirezionalità
 

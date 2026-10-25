@@ -22,6 +22,13 @@ describe("sourceIndex", () => {
     expect(index.edges[0].line).toBe(3);
   });
 
+  it("trova le relazioni ER", () => {
+    const source = "erDiagram\n  CUSTOMER ||--o{ ORDER : places";
+    const model = readModel(source);
+    const index = buildSourceIndex(source, model);
+    expect(index.edges[0].line).toBe(1);
+  });
+
   it("calcola offset di riga", () => {
     const source = "a\nbb\nccc";
     expect(lineNumberAt(source, 3)).toBe(1);

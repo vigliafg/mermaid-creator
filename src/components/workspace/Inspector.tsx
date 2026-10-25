@@ -1,4 +1,4 @@
-import { Eye, RotateCcw, Search, WandSparkles } from "lucide-react";
+import { ArrowLeftRight, Eye, RotateCcw, Search, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {
   Capabilities,
@@ -9,7 +9,7 @@ import type {
 import { edgeKey, elementKey } from "../../lib/diagram/document";
 import type { Selection } from "../../lib/diagram/selection";
 import { selectionLabel } from "../../lib/diagram/selection";
-import { findDefinition, SHAPE_OPTIONS } from "../../lib/diagram/flowchart";
+import { findDefinition, EDGE_ARROW_OPTIONS, readEdgeArrow, SHAPE_OPTIONS } from "../../lib/diagram/flowchart";
 import type { ElementKind, VisualStyle } from "../../lib/diagram/styles";
 import { DASH_OPTIONS, effectiveStyle, styleFor } from "../../lib/diagram/styles";
 import {
@@ -36,6 +36,8 @@ interface Props {
   onShapeChange: (id: string, shapeId: string) => void;
   onReveal: () => void;
   onApplyPreset: (preset: PresetId) => void;
+  onEdgeArrow: (styleId: string) => void;
+  onReverseEdge: () => void;
 }
 
 function normalizeHex(value: string | undefined, fallback: string): string {
@@ -159,12 +161,16 @@ export function Inspector({
   onShapeChange,
   onReveal,
   onApplyPreset,
+  onEdgeArrow,
+  onReverseEdge,
 }: Props) {
   const [query, setQuery] = useState("");
   const [labelDraft, setLabelDraft] = useState("");
 
   const primary = selections[0];
   const labelNode = primary?.kind === "node" ? model?.nodes.find((node) => node.id === primary.id) : null;
+  const endpointLabel = (id: string) =>
+    model?.nodes.find((node) => node.id === id)?.label ?? id;
 
   useEffect(() => {
     setLabelDraft(labelNode?.label ?? "");
@@ -182,6 +188,10 @@ export function Inspector({
           stroke: effective.stroke,
           background: tokens.bg,
         })
+      : null;
+  const arrowState =
+    primary?.kind === "edge" && kind === "flowchart" && model
+      ? readEdgeArrow(source, model, primary.index ?? Number(primary.id))
       : null;
 
   const filteredNodes = useMemo(() => {
@@ -202,9 +212,9 @@ export function Inspector({
   const filteredEdges = useMemo(() => {
     const edges = model?.edges ?? [];
     const q = query.trim().toLowerCase();
-    return q
-      ? edges.filter((edge) => `${edge.from} ${edge.to} ${edge.label}`.toLowerCase().includes(q))
-      : edges;
+    const textFor = (edge: (typeof edges)[number]) =>
+      `${endpointLabel(edge.from)} ${endpointLabel(edge.to)} ${edge.from} ${edge.to} ${edge.label}`.toLowerCase();
+    return q ? edges.filter((edge) => textFor(edge).includes(q)) : edges;
   }, [model, query]);
 
   const canEditKind = primary
@@ -258,7 +268,7 @@ export function Inspector({
                 >
                   <span className="element-dot edge" />
                   <span>
-                    {edge.from} → {edge.to}
+                    {endpointLabel(edge.from)} → {endpointLabel(edge.to)}
                     {edge.label ? ` · ${edge.label}` : ""}
                   </span>
                 </button>
@@ -296,8 +306,18 @@ export function Inspector({
 
       {primary && !canEditKind && (
         <div className="inspector-banner">
-          Mermaid non supporta lo stile per elemento in un diagramma <strong>{kindLabel}</strong>.
-          Usa la palette globale nella tab Tema.
+          {primary.kind === "edge" ? (
+            <>
+              Mermaid non supporta lo stile delle linee in un diagramma{" "}
+              <strong>{kindLabel}</strong>. La connessione resta selezionabile: puoi
+              andare alla riga nel sorgente ed eliminarla.
+            </>
+          ) : (
+            <>
+              Mermaid non supporta lo stile per elemento in un diagramma{" "}
+              <strong>{kindLabel}</strong>. Usa la palette globale nella tab Tema.
+            </>
+          )}
         </div>
       )}
 
@@ -306,6 +326,38 @@ export function Inspector({
           {selections.length > 1 && (
             <div className="multi-selection">
               {selections.length} elementi selezionati: le modifiche si applicano a tutti.
+            </div>
+          )}
+
+          {arrowState && (
+            <div className="style-field wide">
+              <span className="style-label">Punte della connessione</span>
+              <div className="arrow-control">
+                <select
+                  className="input"
+                  value={arrowState.styleId}
+                  onChange={(event) => onEdgeArrow(event.target.value)}
+                  disabled={!arrowState.canEdit}
+                  title="Tipo di punta della connessione"
+                >
+                  {EDGE_ARROW_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn btn-ghost tiny"
+                  title="Inverti direzione: sposta la punta all'altro estremo"
+                  onClick={onReverseEdge}
+                  disabled={!arrowState.canEdit}
+                >
+                  <ArrowLeftRight size={13} /> Inverti
+                </button>
+              </div>
+              {!arrowState.canEdit && (
+                <small className="muted">{arrowState.note}</small>
+              )}
             </div>
           )}
 

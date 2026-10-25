@@ -72,27 +72,29 @@ fn build_api_messages(
             ));
         }
     }
-    if target_theme.is_none() {
-        system.push_str("\n\nSe la richiesta specifica un tema globale (preset o palette), aggiungi in coda un blocco ```mc-theme ... ``` separato dal diagramma; non inserirlo dentro il fence mermaid.");
-    }
+    system.push_str(r##"
+
+Se la richiesta specifica un tema globale (preset o palette), aggiungi in coda alla risposta un blocco separato ```mc-theme ... ```; non inserirlo dentro il fence mermaid.
+Il blocco mc-theme deve contenere JSON valido, senza testo attorno.
+Preset validi (usa esattamente questi id, non inventarne altri): auto, light, dark, contrast, colorblind, neon, blueprint, sunset, paper, terminal, candy, mono, ocean, custom.
+Token validi: bg, fg, muted, line, surface, surfaceAlt, border, accent, font, fontSize, strokeWidth, dash, radius, series.
+Se l'utente chiede un preset, restituisci solo il preset, senza ripetere i token:
+```mc-theme
+{"preset":"contrast"}
+```
+Se l'utente chiede di ritoccare una palette, restituisci solo i token che cambiano:
+```mc-theme
+{"preset":"custom","tokens":{"bg":"#000000","fg":"#ffee00","surface":"#111111"}}
+```
+I token non citati restano invariati. Usa colori #rrggbb. Non mostrare il blocco mc-theme se non richiesto.
+"##);
     if let Some(theme) = target_theme.filter(|value| !value.trim().is_empty()) {
         system.push_str("\n\n<selected_theme>\n");
         system.push_str(&clipped(theme, 4000));
         system.push_str(r##"
 </selected_theme>
-Il tema globale corrente del diagramma è quello sopra (JSON con preset e token risolti).
-Se l'utente chiede un preset o una palette globale, aggiungi in coda alla risposta un blocco separato:
-```mc-theme
-{"preset":"contrast"}
-```
-oppure, per cambiare token specifici:
-```mc-theme
-{"preset":"custom","tokens":{"bg":"#000000","fg":"#ffee00","surface":"#111111"}}
-```
-Preset validi: auto, light, dark, contrast, colorblind, neon, blueprint, sunset, paper, terminal, candy, mono, ocean, custom.
-Token validi: bg, fg, muted, line, surface, surfaceAlt, border, accent, font, fontSize, strokeWidth, dash, radius, series.
-Se restituisci solo alcuni token, gli altri restano invariati. Usa colori #rrggbb.
-Non inserire il blocco mc-theme dentro il fence mermaid e non mostrarlo se non richiesto.
+Il tema globale corrente del diagramma è quello sopra.
+Se l'utente chiede di cambiarlo, restituisci solo il preset scelto oppure i token che cambiano; non copiare la palette corrente nel blocco mc-theme.
 "##);
     }
 

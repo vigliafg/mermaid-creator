@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FileImage,
   FileText,
+  LayoutGrid,
   Loader2,
   Paperclip,
   Square,
@@ -19,11 +20,13 @@ import type { Attachment, ChatUsage, Message, PendingAttachment } from "../types
 import { api } from "../lib/ipc";
 import {
   extractThemeCommand,
+  hasThemeCommandFence,
   stripThemeCommands,
   themeCommandSummary,
 } from "../lib/diagram/themeCommand";
 import { Markdown } from "./Markdown";
 import { ModelPicker } from "./ModelPicker";
+import { DiagramCatalog } from "./DiagramCatalog";
 
 function time(value: number): string {
   return new Intl.DateTimeFormat("it-IT", {
@@ -106,6 +109,7 @@ function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
   const messageDiagrams = diagrams.filter((diagram) => diagram.messageId === message.id);
   const themeCommand = !isUser ? extractThemeCommand(message.content) : null;
+  const themeRequested = !isUser && hasThemeCommandFence(message.content);
   const visibleContent = isUser ? message.content : stripThemeCommands(message.content);
 
   return (
@@ -114,14 +118,19 @@ function MessageBubble({ message }: { message: Message }) {
         {isUser ? (
           <div className="user-text">{message.content}</div>
         ) : visibleContent ? (
-          <Markdown content={message.content} />
-        ) : themeCommand ? null : (
+          <Markdown content={visibleContent} />
+        ) : themeCommand || themeRequested ? null : (
           <div className="muted">Nessun testo restituito.</div>
         )}
 
         {themeCommand && (
           <div className="theme-note">
             Tema del diagramma: {themeCommandSummary(themeCommand)}
+          </div>
+        )}
+        {themeRequested && !themeCommand && (
+          <div className="theme-note warn">
+            Tema richiesto in un formato non riconosciuto: nessun tema applicato.
           </div>
         )}
 
@@ -196,6 +205,7 @@ export function ChatPane() {
 
   const [input, setInput] = useState("");
   const [showModels, setShowModels] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -307,6 +317,11 @@ export function ChatPane() {
                 </button>
               ))}
             </div>
+            <button className="catalog-entry" onClick={() => setShowCatalog(true)}>
+              <LayoutGrid size={15} />
+              <span>Esplora i tipi di diagramma</span>
+              <small>flowchart, sequence, ER, timeline e altri</small>
+            </button>
           </div>
         ) : (
           messages.map((message) => <MessageBubble key={message.id} message={message} />)
@@ -404,6 +419,13 @@ export function ChatPane() {
             />
             <button
               className="icon-btn"
+              title="Tipi di diagramma"
+              onClick={() => setShowCatalog(true)}
+            >
+              <LayoutGrid size={18} />
+            </button>
+            <button
+              className="icon-btn"
               title="Allega file"
               onClick={() => fileInput.current?.click()}
               disabled={pendingAttachments.length >= MAX_FILES}
@@ -435,6 +457,14 @@ export function ChatPane() {
       </div>
 
       {showModels && <ModelPicker onClose={() => setShowModels(false)} />}
+      <DiagramCatalog
+        open={showCatalog}
+        onClose={() => setShowCatalog(false)}
+        onUsePrompt={(prompt) => {
+          setInput(prompt);
+          window.requestAnimationFrame(() => inputRef.current?.focus());
+        }}
+      />
     </section>
   );
 }

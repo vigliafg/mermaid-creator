@@ -28,6 +28,7 @@ export function toggleSelection(list: Selection[], selection: Selection): Select
 
 export function selectionLabel(model: DiagramModel | null, selection: Selection): string {
   if (!model) return selection.id;
+  const endpoint = (id: string) => model.nodes.find((item) => item.id === id)?.label ?? id;
   if (selection.kind === "node") {
     const node = model.nodes.find((item) => item.id === selection.id);
     return node ? `${node.label} · ${node.id}` : selection.id;
@@ -37,7 +38,7 @@ export function selectionLabel(model: DiagramModel | null, selection: Selection)
     return cluster ? `${cluster.label} · ${cluster.id}` : selection.id;
   }
   const edge = model.edges.find((item) => item.index === selection.index);
-  return edge ? `${edge.from} → ${edge.to}` : `arco ${selection.index ?? selection.id}`;
+  return edge ? `${endpoint(edge.from)} → ${endpoint(edge.to)}` : `arco ${selection.index ?? selection.id}`;
 }
 
 /**
@@ -74,14 +75,37 @@ export function resolveMermaidNodeId(
   return ids.includes(stripped) ? stripped : null;
 }
 
+function dataIdToken(dataId: string, token: string): boolean {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[_-])${escaped}(?:[_-]|$)`).test(dataId);
+}
+
 export function edgeIndexFromDataId(dataId: string | null, model: DiagramModel): number | null {
   if (!dataId) return null;
   const exact = model.edges.find((edge) => edge.id === dataId);
   if (exact) return exact.index;
+  // Class numera le relazioni da 1, ER da 0. Il suffisso permette di
+  // distinguere più relazioni fra gli stessi due elementi.
+  if (model.kind === "class" || model.kind === "er") {
+    const suffix = dataId.match(/_(\d+)$/);
+    if (suffix) {
+      const parsed = Number(suffix[1]);
+      const guess = model.kind === "class" ? parsed - 1 : parsed;
+      const edge = model.edges[guess];
+      if (edge && dataIdToken(dataId, edge.from) && dataIdToken(dataId, edge.to)) {
+        return edge.index;
+      }
+    }
+  }
   for (const edge of model.edges) {
     if (dataId.startsWith(`L_${edge.from}_${edge.to}_`)) return edge.index;
     if (dataId.startsWith(`id_${edge.from}-${edge.to}`)) return edge.index;
     if (dataId.startsWith(`id_${edge.from}_${edge.to}`)) return edge.index;
+  }
+  // ER e class usano id interni del renderer (es. id_entity-CUSTOMER-0_...),
+  // mentre il modello espone i nomi sorgente: confrontiamo gli estremi.
+  for (const edge of model.edges) {
+    if (dataIdToken(dataId, edge.from) && dataIdToken(dataId, edge.to)) return edge.index;
   }
   return null;
 }
@@ -99,7 +123,9 @@ function setAnnotation(
 
 function annotatePele(root: SVGSVGElement, model: DiagramModel): void {
   const nodes = Array.from(root.querySelectorAll<SVGGElement>("[data-id]"));
+  const orderFallback = model.kind === "flowchart" || model.kind === "state";
   let edgeOrder = 0;
+  let labelOrder = 0;
   for (const element of nodes) {
     const dataId = element.getAttribute("data-id");
     if (!dataId) continue;
@@ -109,14 +135,15 @@ function annotatePele(root: SVGSVGElement, model: DiagramModel): void {
       continue;
     }
     if (classes.includes("pele-edge-label")) {
-      const index = edgeIndexFromDataId(dataId, model) ?? edgeOrder;
-      setAnnotation(element, "edge", String(index), index);
+      const index = edgeIndexFromDataId(dataId, model) ?? (orderFallback ? labelOrder : null);
+      labelOrder += 1;
+      if (index !== null) setAnnotation(element, "edge", String(index), index);
       continue;
     }
     if (classes.includes("pele-edge")) {
-      const index = edgeIndexFromDataId(dataId, model) ?? edgeOrder;
+      const index = edgeIndexFromDataId(dataId, model) ?? (orderFallback ? edgeOrder : null);
       edgeOrder += 1;
-      setAnnotation(element, "edge", String(index), index);
+      if (index !== null) setAnnotation(element, "edge", String(index), index);
       continue;
     }
     if (classes.includes("pele-node")) {
@@ -140,18 +167,27 @@ function annotateMermaid(root: SVGSVGElement, model: DiagramModel): void {
     if (id) setAnnotation(element, "cluster", id);
   }
   const edgePaths = Array.from(
-    root.querySelectorAll<SVGPathElement>("path.flowchart-link, path.transition"),
+    root.querySelectorAll<SVGPathElement>(
+      "path.flowchart-link, path.transition, path.relation, path.relationshipLine",
+    ),
   );
+  // Per flowchart e state l'ordine DOM è una buona fallback quando manca il
+  // data-id. Per class/ER preferiamo saltare l'elemento (es. connettori delle
+  // note) invece di associargli un arco sbagliato.
+  const orderFallback = model.kind === "flowchart" || model.kind === "state";
   edgePaths.forEach((element, order) => {
     const fromData = edgeIndexFromDataId(element.getAttribute("data-id"), model);
-    const index = fromData ?? order;
-    setAnnotation(element, "edge", String(index), index);
+    const index =
+      fromData ?? (orderFallback && order < model.edges.length ? order : null);
+    if (index !== null) setAnnotation(element, "edge", String(index), index);
   });
   const labels = Array.from(root.querySelectorAll<SVGGElement>("g.edgeLabel"));
   labels.forEach((element, order) => {
     const dataId = element.getAttribute("data-id") ?? element.querySelector("[data-id]")?.getAttribute("data-id") ?? null;
-    const index = edgeIndexFromDataId(dataId, model) ?? order;
-    setAnnotation(element, "edge", String(index), index);
+    const fromData = edgeIndexFromDataId(dataId, model);
+    const index =
+      fromData ?? (orderFallback && order < model.edges.length ? order : null);
+    if (index !== null) setAnnotation(element, "edge", String(index), index);
   });
 }
 

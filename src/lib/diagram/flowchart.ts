@@ -1,4 +1,4 @@
-import { edgeKey, elementKey, readModel, type DiagramModel, type StyleMap } from "./document";
+import { edgeKey, elementKey, kindFromSource, readModel, type DiagramModel, type StyleMap } from "./document";
 import { buildSourceIndex, lineRange, type SourceRange } from "./sourceIndex";
 import type { Selection } from "./selection";
 
@@ -31,6 +31,47 @@ export const ARROW_OPTIONS = [
   { id: "dotted", label: "Tratteggiata", value: "-.->" },
   { id: "thick", label: "Spessa", value: "==>" },
 ];
+
+export type DiagramDirection = "TB" | "BT" | "LR" | "RL";
+
+export const DIRECTION_OPTIONS: Array<{ id: DiagramDirection; label: string; hint: string }> = [
+  { id: "TB", label: "Verticale ↓", hint: "Dall'alto verso il basso (TB)" },
+  { id: "BT", label: "Verticale ↑", hint: "Dal basso verso l'alto (BT)" },
+  { id: "LR", label: "Orizzontale →", hint: "Da sinistra verso destra (LR)" },
+  { id: "RL", label: "Orizzontale ←", hint: "Da destra verso sinistra (RL)" },
+];
+
+const DIRECTION_TOKENS = /^(TB|TD|BT|LR|RL)$/i;
+
+export function normalizeDirection(value: string | null | undefined): DiagramDirection {
+  const token = (value ?? "").trim().toUpperCase();
+  if (token === "BT") return "BT";
+  if (token === "LR") return "LR";
+  if (token === "RL") return "RL";
+  return "TB";
+}
+
+export interface EdgeArrowOption {
+  id: string;
+  label: string;
+  syntax: string;
+}
+
+export const EDGE_ARROW_OPTIONS: EdgeArrowOption[] = [
+  { id: "arrow", label: "Freccia (una punta)", syntax: "-->" },
+  { id: "arrow-both", label: "Doppia freccia (due punte)", syntax: "<-->" },
+  { id: "circle", label: "Cerchio (una punta)", syntax: "--o" },
+  { id: "circle-both", label: "Doppio cerchio", syntax: "o--o" },
+  { id: "cross", label: "Croce (una punta)", syntax: "--x" },
+  { id: "cross-both", label: "Doppia croce", syntax: "x--x" },
+  { id: "open", label: "Nessuna punta", syntax: "---" },
+  { id: "dotted", label: "Tratteggiata (una punta)", syntax: "-.->" },
+  { id: "dotted-open", label: "Tratteggiata senza punte", syntax: "-.-" },
+  { id: "thick", label: "Spessa (una punta)", syntax: "==>" },
+  { id: "thick-both", label: "Spessa (due punte)", syntax: "<==>" },
+  { id: "thick-open", label: "Spessa senza punte", syntax: "===" },
+];
+
 
 export interface DefinitionSpan {
   from: number;
@@ -164,17 +205,316 @@ export function addEdge(source: string, from: string, to: string, arrow = "-->")
   return insertBeforeStyles(source, `  ${from} ${arrow} ${to}`);
 }
 
-export function setDirection(source: string, direction: "TB" | "TD" | "BT" | "LR" | "RL"): string {
+export function setDirection(source: string, direction: DiagramDirection): string {
   const eol = eolFor(source);
+  const kind = kindFromSource(source);
   const lines = source.split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const match = lines[index].match(/^(\s*)(flowchart|graph)\b(?:\s+\S+)?(.*)$/i);
-    if (match) {
-      lines[index] = `${match[1]}${match[2]} ${direction}${match[3] ?? ""}`;
+  const headerRegex =
+    kind === "flowchart"
+      ? /^(\s*)((?:flowchart|graph)(?:-[A-Za-z0-9-]+)?)\b(.*)$/i
+      : kind === "class"
+        ? /^(\s*)(classDiagram(?:-v2)?)\b(.*)$/i
+        : kind === "state"
+          ? /^(\s*)(stateDiagram(?:-v2)?)\b(.*)$/i
+          : kind === "er"
+            ? /^(\s*)(erDiagram)\b(.*)$/i
+            : null;
+
+  if (kind === "flowchart") {
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = lines[index].match(headerRegex!);
+      if (!match) continue;
+      const rest = (match[3] ?? "").replace(/^\s+\S+/, "");
+      lines[index] = `${match[1]}${match[2]} ${direction}${rest}`;
       return lines.join(eol);
     }
   }
-  return `${source.replace(/\s+$/g, "")}${eol}${direction}${eol}`;
+
+  if (headerRegex) {
+    const headerIndex = lines.findIndex((line) => headerRegex.test(line));
+    if (headerIndex >= 0) {
+      const match = lines[headerIndex].match(headerRegex)!;
+      const trailing = (match[3] ?? "").trim();
+      if (trailing && DIRECTION_TOKENS.test(trailing)) {
+        lines[headerIndex] = `${match[1]}${match[2]}`;
+      }
+      const existing = lines.findIndex((line) => /^direction\s+\S+\s*$/i.test(line));
+      if (existing >= 0) {
+        lines[existing] = `direction ${direction}`;
+      } else {
+        lines.splice(headerIndex + 1, 0, `direction ${direction}`);
+      }
+      return lines.join(eol);
+    }
+  }
+
+  return `${source.replace(/\s+$/g, "")}${eol}${kind === "flowchart" ? direction : `direction ${direction}`}${eol}`;
+}
+
+interface ParsedEdgeLink {
+  styleId: string;
+  label: string;
+}
+
+interface LocatedEdgeLink {
+  line: string;
+  lineStart: number;
+  lineEnd: number;
+  fromStart: number;
+  fromEnd: number;
+  toStart: number;
+  toEnd: number;
+  linkStart: number;
+  linkEnd: number;
+  parsed: ParsedEdgeLink;
+}
+
+const LINK_CORE = /^(<==>|<-->|o--o|x--x|-\.->|==>|===|--o|--x|-->|---|-\.-)(?:\|([\s\S]*)\|)?$/;
+
+const LINK_CORE_STYLES: Record<string, string> = {
+  "-->": "arrow",
+  "<-->": "arrow-both",
+  "--o": "circle",
+  "o--o": "circle-both",
+  "--x": "cross",
+  "x--x": "cross-both",
+  "---": "open",
+  "-.->": "dotted",
+  "-.-": "dotted-open",
+  "==>": "thick",
+  "<==>": "thick-both",
+  "===": "thick-open",
+};
+
+const LINK_TEXT_PATTERNS: Array<[RegExp, string]> = [
+  [/^<--\s+([\s\S]+?)\s+-->$/, "arrow-both"],
+  [/^<==\s+([\s\S]+?)\s+==>$/, "thick-both"],
+  [/^o--\s+([\s\S]+?)\s+--o$/, "circle-both"],
+  [/^x--\s+([\s\S]+?)\s+--x$/, "cross-both"],
+  [/^--\s+([\s\S]+?)\s+-->$/, "arrow"],
+  [/^--\s+([\s\S]+?)\s+---$/, "open"],
+  [/^-\.\s+([\s\S]+?)\s+\.->$/, "dotted"],
+  [/^-\.\s+([\s\S]+?)\s+\.-$/, "dotted-open"],
+  [/^==\s+([\s\S]+?)\s+==>$/, "thick"],
+  [/^==\s+([\s\S]+?)\s+===$/, "thick-open"],
+  [/^--\s+([\s\S]+?)\s+--o$/, "circle"],
+  [/^--\s+([\s\S]+?)\s+--x$/, "cross"],
+];
+
+function edgeTokenPositions(line: string, id: string): number[] {
+  const regex = new RegExp(
+    `(?<![A-Za-z0-9_.-])${escapeRegExp(id)}(?![A-Za-z0-9_.-])`,
+    "g",
+  );
+  const positions: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(line))) {
+    positions.push(match.index);
+    if (match[0].length === 0) regex.lastIndex += 1;
+  }
+  return positions;
+}
+
+function nodeSuffixEnd(line: string, tokenEnd: number): number {
+  const shapes = [...SHAPE_OPTIONS].sort((a, b) => b.open.length - a.open.length);
+  let index = tokenEnd;
+  for (;;) {
+    let cursor = index;
+    while (cursor < line.length && /\s/.test(line[cursor])) cursor += 1;
+    if (line.startsWith(":::", cursor)) {
+      cursor += 3;
+      while (cursor < line.length && /[\w-]/.test(line[cursor])) cursor += 1;
+      index = cursor;
+      continue;
+    }
+    let matched = false;
+    for (const shape of shapes) {
+      if (!line.startsWith(shape.open, cursor)) continue;
+      const close = findClosing(line, cursor + shape.open.length, shape.close);
+      if (close < 0) continue;
+      index = close + shape.close.length;
+      matched = true;
+      break;
+    }
+    if (!matched) break;
+  }
+  return index;
+}
+
+function cleanEdgeLabel(value: string, stripQuotes: boolean): string {
+  const trimmed = value.trim();
+  if (!stripQuotes || trimmed.length < 2) return trimmed;
+  const first = trimmed[0];
+  const last = trimmed.at(-1);
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseEdgeLink(text: string): ParsedEdgeLink | null {
+  const core = text.match(LINK_CORE);
+  if (core) {
+    const styleId = LINK_CORE_STYLES[core[1]];
+    if (styleId) return { styleId, label: cleanEdgeLabel(core[2] ?? "", false) };
+  }
+  for (const [pattern, styleId] of LINK_TEXT_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) return { styleId, label: cleanEdgeLabel(match[1] ?? "", true) };
+  }
+  return null;
+}
+
+function findLinkInLine(line: string, from: string, to: string): LocatedEdgeLink | null {
+  const fromPositions = edgeTokenPositions(line, from);
+  const toPositions = edgeTokenPositions(line, to);
+  let best: LocatedEdgeLink | null = null;
+  for (const fromStart of fromPositions) {
+    const fromEnd = nodeSuffixEnd(line, fromStart + from.length);
+    for (const toStart of toPositions) {
+      if (toStart < fromEnd) continue;
+      let linkStart = fromEnd;
+      while (linkStart < line.length && /\s/.test(line[linkStart])) linkStart += 1;
+      let linkEnd = toStart;
+      while (linkEnd > linkStart && /\s/.test(line[linkEnd - 1])) linkEnd -= 1;
+      if (linkEnd <= linkStart) continue;
+      const parsed = parseEdgeLink(line.slice(linkStart, linkEnd));
+      if (!parsed) continue;
+      const candidate: LocatedEdgeLink = {
+        line,
+        lineStart: 0,
+        lineEnd: line.length,
+        fromStart,
+        fromEnd,
+        toStart,
+        toEnd: nodeSuffixEnd(line, toStart + to.length),
+        linkStart,
+        linkEnd,
+        parsed,
+      };
+      if (!best || linkEnd - linkStart < best.linkEnd - best.linkStart) best = candidate;
+    }
+  }
+  return best;
+}
+
+function findEdgeLink(
+  source: string,
+  model: DiagramModel,
+  index: number,
+): LocatedEdgeLink | null {
+  const edge = model.edges.find((item) => item.index === index);
+  if (!edge) return null;
+  const range = buildSourceIndex(source, model).edges[index];
+  if (!range) return null;
+  const line = source.slice(range.from, range.to);
+  const located = findLinkInLine(line, edge.from, edge.to);
+  if (!located) return null;
+  return {
+    ...located,
+    lineStart: range.from,
+    lineEnd: range.to,
+    line,
+  };
+}
+
+function linkForStyle(styleId: string, label: string): string | null {
+  const option = EDGE_ARROW_OPTIONS.find((item) => item.id === styleId);
+  if (!option) return null;
+  if (!label) return option.syntax;
+  const safe = label.replace(/"/g, "&quot;");
+  const wrappers: Record<string, [string, string]> = {
+    arrow: ["-- ", " -->"],
+    "arrow-both": ["<-- ", " -->"],
+    circle: ["-- ", " --o"],
+    "circle-both": ["o-- ", " --o"],
+    cross: ["-- ", " --x"],
+    "cross-both": ["x-- ", " --x"],
+    open: ["-- ", " ---"],
+    dotted: ["-. ", " .->"],
+    "dotted-open": ["-. ", " .-"],
+    thick: ["== ", " ==>"],
+    "thick-both": ["<== ", " ==>"],
+    "thick-open": ["== ", " ==="],
+  };
+  const wrapper = wrappers[styleId];
+  if (!wrapper) return null;
+  return `${wrapper[0]}${safe}${wrapper[1]}`;
+}
+
+export interface EdgeArrowState {
+  styleId: string;
+  label: string;
+  canEdit: boolean;
+  note?: string;
+}
+
+export function readEdgeArrow(
+  source: string,
+  model: DiagramModel,
+  index: number,
+): EdgeArrowState {
+  const located = findEdgeLink(source, model, index);
+  if (!located) {
+    return {
+      styleId: "arrow",
+      label: "",
+      canEdit: false,
+      note: "Punte non modificabili da qui: modifica la riga nel sorgente.",
+    };
+  }
+  return {
+    styleId: located.parsed.styleId,
+    label: located.parsed.label,
+    canEdit: true,
+  };
+}
+
+export function setEdgeArrow(
+  source: string,
+  model: DiagramModel,
+  index: number,
+  styleId: string,
+): { source: string; ok: boolean; note?: string } {
+  const located = findEdgeLink(source, model, index);
+  if (!located) {
+    return {
+      source,
+      ok: false,
+      note: "Punte non modificabili da qui: modifica la riga nel sorgente.",
+    };
+  }
+  const link = linkForStyle(styleId, located.parsed.label);
+  if (!link) return { source, ok: false, note: "Tipo di punta non riconosciuto." };
+  const start = located.lineStart + located.linkStart;
+  const end = located.lineStart + located.linkEnd;
+  return { source: `${source.slice(0, start)}${link}${source.slice(end)}`, ok: true };
+}
+
+export function reverseEdge(
+  source: string,
+  model: DiagramModel,
+  index: number,
+): { source: string; ok: boolean; note?: string } {
+  const located = findEdgeLink(source, model, index);
+  if (!located) {
+    return {
+      source,
+      ok: false,
+      note: "Direzione non modificabile da qui: modifica la riga nel sorgente.",
+    };
+  }
+  const link = linkForStyle(located.parsed.styleId, located.parsed.label);
+  if (!link) return { source, ok: false, note: "Tipo di punta non riconosciuto." };
+  const fromSegment = located.line.slice(located.fromStart, located.fromEnd);
+  const toSegment = located.line.slice(located.toStart, located.toEnd);
+  const before = located.line.slice(0, located.fromStart);
+  const after = located.line.slice(located.toEnd);
+  const line = `${before}${toSegment} ${link} ${fromSegment}${after}`;
+  return {
+    source: `${source.slice(0, located.lineStart)}${line}${source.slice(located.lineEnd)}`,
+    ok: true,
+  };
 }
 
 export function deleteSelectionLine(

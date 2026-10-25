@@ -43,7 +43,10 @@ describe("modello diagramma", () => {
     expect(normalizeKind("flowchart-elk")).toBe("flowchart");
     expect(capabilitiesFor("sequence").nodes).toBe(false);
     expect(capabilitiesFor("flowchart")).toMatchObject({ nodes: true, edges: true, clusters: true });
-    expect(capabilitiesFor("class").edges).toBe(false);
+    expect(capabilitiesFor("class")).toMatchObject({ edges: false, edgeSelection: true, direction: true });
+    expect(capabilitiesFor("er")).toMatchObject({ edges: false, edgeSelection: true, direction: true });
+    expect(capabilitiesFor("state")).toMatchObject({ direction: true });
+    expect(capabilitiesFor("sequence").direction).toBe(false);
   });
 });
 

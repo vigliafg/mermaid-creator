@@ -49,8 +49,10 @@ export interface DiagramModel {
 export interface Capabilities {
   nodes: boolean;
   edges: boolean;
+  edgeSelection: boolean;
   clusters: boolean;
   structure: boolean;
+  direction: boolean;
 }
 
 export interface DiagramDocument {
@@ -77,8 +79,10 @@ export const STYLE_BLOCK_END = "%% mc:styles:end";
 const EMPTY_CAPABILITIES: Capabilities = {
   nodes: false,
   edges: false,
+  edgeSelection: false,
   clusters: false,
   structure: false,
+  direction: false,
 };
 
 export function normalizeKind(value: string | undefined | null): DiagramKind {
@@ -117,15 +121,50 @@ export function kindFromSource(source: string): DiagramKind {
 export function capabilitiesFor(kind: DiagramKind): Capabilities {
   switch (kind) {
     case "flowchart":
-      return { nodes: true, edges: true, clusters: true, structure: true };
+      return {
+        nodes: true,
+        edges: true,
+        edgeSelection: true,
+        clusters: true,
+        structure: true,
+        direction: true,
+      };
     case "class":
-      return { nodes: true, edges: false, clusters: false, structure: false };
+      return {
+        nodes: true,
+        edges: false,
+        edgeSelection: true,
+        clusters: false,
+        structure: false,
+        direction: true,
+      };
     case "state":
-      return { nodes: true, edges: true, clusters: false, structure: false };
+      return {
+        nodes: true,
+        edges: true,
+        edgeSelection: true,
+        clusters: false,
+        structure: false,
+        direction: true,
+      };
     case "er":
-      return { nodes: true, edges: false, clusters: false, structure: false };
+      return {
+        nodes: true,
+        edges: false,
+        edgeSelection: true,
+        clusters: false,
+        structure: false,
+        direction: true,
+      };
     case "block":
-      return { nodes: false, edges: false, clusters: false, structure: false };
+      return {
+        nodes: false,
+        edges: false,
+        edgeSelection: false,
+        clusters: false,
+        structure: false,
+        direction: false,
+      };
     default:
       return { ...EMPTY_CAPABILITIES };
   }
@@ -205,14 +244,18 @@ function fromPele(parsed: any): DiagramModel {
   }
 
   if (parsed.type === "er") {
-    const nodes: ModelNode[] = asArray(parsed.entities?.values?.()).map((entity: any) => ({
-      id: String(entity.id),
-      label: labelOf(entity.label, String(entity.id)),
-    }));
+    const entities = asArray(parsed.entities?.values?.());
+    const names = new Map<string, string>();
+    const nodes: ModelNode[] = entities.map((entity: any) => {
+      const internal = String(entity.id);
+      const id = labelOf(entity.label, internal);
+      names.set(internal, id);
+      return { id, label: id };
+    });
     const edges: ModelEdge[] = (parsed.relationships ?? []).map((relation: any, index: number) => ({
       index,
-      from: String(relation.entityA),
-      to: String(relation.entityB),
+      from: names.get(String(relation.entityA)) ?? String(relation.entityA),
+      to: names.get(String(relation.entityB)) ?? String(relation.entityB),
       label: [relation.roleA, relation.roleB].filter(Boolean).join(" · "),
       kind: "relationship",
     }));

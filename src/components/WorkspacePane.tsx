@@ -9,9 +9,11 @@ import {
   Copy,
   Download,
   FileCode2,
+  Hand,
   History,
   Link2,
   Loader2,
+  MousePointer2,
   Palette,
   PanelRightClose,
   PanelRightOpen,
@@ -45,10 +47,15 @@ import {
   addNode,
   ARROW_OPTIONS,
   deleteSelectionLine,
+  DIRECTION_OPTIONS,
   nodeLabel,
+  normalizeDirection,
   replaceNodeLabel,
+  reverseEdge,
   setDirection,
+  setEdgeArrow,
   setNodeShape,
+  type DiagramDirection,
 } from "../lib/diagram/flowchart";
 import {
   buildSourceIndex,
@@ -57,6 +64,7 @@ import {
 } from "../lib/diagram/sourceIndex";
 import {
   makeSelection,
+  selectionLabel,
   toggleSelection,
   type Selection,
 } from "../lib/diagram/selection";
@@ -193,6 +201,7 @@ export function WorkspacePane() {
   const [connectMode, setConnectMode] = useState(false);
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [connectArrow, setConnectArrow] = useState("-->");
+  const [tool, setTool] = useState<"select" | "pan">("select");
   const [reveal, setReveal] = useState<{ from: number; to: number; line: number } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -527,7 +536,8 @@ export function WorkspacePane() {
       return;
     }
     const target = selection.kind === "edge" ? `l'arco ${selection.id}` : `il nodo ${selection.id}`;
-    if (!window.confirm(`Eliminare ${target}? Verranno rimosse le righe che lo contengono.`)) {
+    const description = selectionLabel(doc.model, selection);
+    if (!window.confirm(`Eliminare ${target} (${description})? Verranno rimosse le righe che lo contengono.`)) {
       return;
     }
     const result = deleteSelectionLine(source, selection, doc.model);
@@ -546,8 +556,35 @@ export function WorkspacePane() {
     commitSource(setNodeShape(source, id, shapeId));
   };
 
-  const changeDirection = (direction: "TB" | "TD" | "BT" | "LR" | "RL") => {
+  const changeDirection = (direction: DiagramDirection) => {
     commitSource(setDirection(source, direction));
+  };
+
+  const changeEdgeArrow = (styleId: string) => {
+    const selection = selections[0];
+    if (!selection || selection.kind !== "edge") return;
+    const result = setEdgeArrow(
+      source,
+      doc.model,
+      selection.index ?? Number(selection.id),
+      styleId,
+    );
+    if (!result.ok) {
+      toast.error(result.note ?? "Punte non modificabili");
+      return;
+    }
+    commitSource(result.source);
+  };
+
+  const flipSelectedEdge = () => {
+    const selection = selections[0];
+    if (!selection || selection.kind !== "edge") return;
+    const result = reverseEdge(source, doc.model, selection.index ?? Number(selection.id));
+    if (!result.ok) {
+      toast.error(result.note ?? "Direzione non modificabile");
+      return;
+    }
+    commitSource(result.source);
   };
 
   const handleSourceChange = (value: string) => {
@@ -689,6 +726,25 @@ export function WorkspacePane() {
         else undo();
         return;
       }
+      if (
+        !typing &&
+        inWorkspace &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        const key = event.key.toLowerCase();
+        if (key === "v") {
+          event.preventDefault();
+          setTool("select");
+          return;
+        }
+        if (key === "h") {
+          event.preventDefault();
+          setTool("pan");
+          return;
+        }
+      }
       if (event.key === "Escape") {
         setConnectMode(false);
         setConnectFrom(null);
@@ -782,6 +838,23 @@ export function WorkspacePane() {
 
       <div className="workspace-toolbar">
         <div className="toolbar-spacer" />
+        <button
+          className={`icon-btn ${tool === "select" ? "active" : ""}`}
+          title="Seleziona oggetti (V)"
+          aria-pressed={tool === "select"}
+          onClick={() => setTool("select")}
+        >
+          <MousePointer2 size={16} />
+        </button>
+        <button
+          className={`icon-btn ${tool === "pan" ? "active" : ""}`}
+          title="Sposta la vista (H)"
+          aria-pressed={tool === "pan"}
+          onClick={() => setTool("pan")}
+        >
+          <Hand size={16} />
+        </button>
+        <span className="toolbar-divider" />
         <button className="icon-btn" title="Zoom out" onClick={() => stageRef.current?.zoomOut()}>
           <ZoomOut size={16} />
         </button>
@@ -821,6 +894,7 @@ export function WorkspacePane() {
                 } else {
                   setConnectMode(true);
                   setConnectFrom(null);
+                  setTool("select");
                   toast.info("Clicca il nodo di partenza, poi quello di arrivo");
                 }
               }}
@@ -839,29 +913,36 @@ export function WorkspacePane() {
                 </option>
               ))}
             </select>
-            <select
-              className="toolbar-select"
-              value={doc.model.direction ?? "TB"}
-              onChange={(event) =>
-                changeDirection(event.target.value as "TB" | "TD" | "BT" | "LR" | "RL")
-              }
-              title="Direzione del layout"
-            >
-              {["TB", "TD", "BT", "LR", "RL"].map((direction) => (
-                <option key={direction} value={direction}>
-                  {direction}
-                </option>
-              ))}
-            </select>
-            <button
-              className="icon-btn danger"
-              title="Elimina elemento selezionato"
-              onClick={deleteSelected}
-              disabled={!selections.length}
-            >
-              <Trash2 size={16} />
-            </button>
           </>
+        )}
+        {doc.capabilities.direction && (
+          <select
+            className="toolbar-select"
+            value={normalizeDirection(doc.model.direction)}
+            onChange={(event) => changeDirection(event.target.value as DiagramDirection)}
+            title="Direzione del layout"
+          >
+            {DIRECTION_OPTIONS.map((direction) => (
+              <option key={direction.id} value={direction.id} title={direction.hint}>
+                {direction.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {(doc.capabilities.structure ||
+          (doc.capabilities.edgeSelection && selections[0]?.kind === "edge")) && (
+          <button
+            className="icon-btn danger"
+            title={
+              doc.capabilities.structure
+                ? "Elimina elemento selezionato"
+                : "Elimina la connessione selezionata"
+            }
+            onClick={deleteSelected}
+            disabled={doc.capabilities.structure ? !selections.length : false}
+          >
+            <Trash2 size={16} />
+          </button>
         )}
         <span className="toolbar-divider" />
         {dirty && (
@@ -954,6 +1035,7 @@ export function WorkspacePane() {
               diagramKey={diagram.id}
               renderer={render.renderer}
               model={doc.model}
+              tool={tool}
               selections={selections}
               onSelect={select}
               onStartLabelEdit={startLabelEdit}
@@ -1049,6 +1131,8 @@ export function WorkspacePane() {
                 onShapeChange={changeShape}
                 onReveal={revealSelection}
                 onApplyPreset={(preset: PresetId) => persistTheme({ preset })}
+                onEdgeArrow={changeEdgeArrow}
+                onReverseEdge={flipSelectedEdge}
               />
             )}
             {sideTab === "theme" && (
