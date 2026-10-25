@@ -6,6 +6,7 @@ import type {
   ChatEvent,
   Conversation,
   Diagram,
+  DiagramBoard,
   DiagramInput,
   DiagramVersion,
   KeyInfo,
@@ -91,6 +92,25 @@ export const api = {
   diagramDelete: (id: string) => invoke<void>("diagram_delete", { id }),
   diagramVersions: (id: string) =>
     invoke<DiagramVersion[]>("diagram_versions", { id }),
+
+  boardGet: (diagramId: string) =>
+    invoke<DiagramBoard | null>("board_get", { diagramId }),
+  boardCreate: (
+    diagramId: string,
+    sceneJson: string,
+    origin: "diagram" | "manual",
+    baseSource: string | null,
+  ) =>
+    invoke<DiagramBoard>("board_create", {
+      diagramId,
+      sceneJson,
+      origin,
+      baseSource,
+    }),
+  boardSave: (diagramId: string, sceneJson: string) =>
+    invoke<DiagramBoard>("board_save", { diagramId, sceneJson }),
+  boardDelete: (diagramId: string) =>
+    invoke<void>("board_delete", { diagramId }),
 
   saveFile: (path: string, data: string, binary: boolean) =>
     invoke<void>("save_file", { path, data, binary }),

@@ -8,8 +8,13 @@ use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 use crate::models::{
-    Attachment, AttachmentImport, Conversation, Diagram, DiagramInput, DiagramVersion, Message,
+    Attachment, AttachmentImport, Conversation, Diagram, DiagramBoard, DiagramInput, DiagramVersion,
+    Message,
 };
+
+/// Limite della scena serializzata: oltre, l'autosave fallisce con un messaggio
+/// esplicito invece di gonfiare il DB.
+pub const MAX_BOARD_BYTES: usize = 25 * 1024 * 1024;
 
 pub fn now_ms() -> i64 {
     SystemTime::now()
@@ -64,7 +69,7 @@ pub fn resolve_data_dir(app_data_dir: &Path) -> Result<PathBuf, String> {
 pub fn init(app_data_dir: &Path) -> Result<(PathBuf, Connection), String> {
     let data_dir = resolve_data_dir(app_data_dir)?;
     let db_path = data_dir.join("mermaid-creator.db");
-    let conn = Connection::open(&db_path).map_err(|e| format!("Apertura DB fallita: {e}"))?;
+    let mut conn = Connection::open(&db_path).map_err(|e| format!("Apertura DB fallita: {e}"))?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(|e| format!("WAL fallito: {e}"))?;
     conn.pragma_update(None, "synchronous", "NORMAL")
@@ -73,7 +78,7 @@ pub fn init(app_data_dir: &Path) -> Result<(PathBuf, Connection), String> {
         .map_err(|e| format!("PRAGMA foreign_keys fallito: {e}"))?;
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("busy_timeout fallito: {e}"))?;
-    migrate(&conn)?;
+    migrate(&mut conn)?;
     conn.execute(
         "UPDATE messages SET status='interrupted' WHERE status='streaming'",
         [],
@@ -82,93 +87,123 @@ pub fn init(app_data_dir: &Path) -> Result<(PathBuf, Connection), String> {
     Ok((data_dir, conn))
 }
 
-fn migrate(conn: &Connection) -> Result<(), String> {
+const SCHEMA_V1: &str = r#"
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        model_id TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'complete',
+        model_id TEXT NOT NULL DEFAULT '',
+        target_diagram_id TEXT,
+        usage_json TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        UNIQUE(conversation_id, seq)
+    );
+
+    CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY,
+        message_id TEXT,
+        ordinal INTEGER NOT NULL DEFAULT 0,
+        kind TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        mime TEXT NOT NULL DEFAULT '',
+        size INTEGER NOT NULL DEFAULT 0,
+        storage_path TEXT,
+        extracted_text TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS diagrams (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT,
+        message_id TEXT,
+        ordinal INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL,
+        source TEXT NOT NULL,
+        diagram_type TEXT NOT NULL DEFAULT 'unknown',
+        in_library INTEGER NOT NULL DEFAULT 0,
+        favorite INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS diagram_versions (
+        id TEXT PRIMARY KEY,
+        diagram_id TEXT NOT NULL,
+        version_no INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_conv_seq
+        ON messages(conversation_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_attachments_message
+        ON attachments(message_id);
+    CREATE INDEX IF NOT EXISTS idx_diagrams_conv
+        ON diagrams(conversation_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_diagrams_message
+        ON diagrams(message_id);
+    CREATE INDEX IF NOT EXISTS idx_diagram_versions
+        ON diagram_versions(diagram_id, version_no);
+"#;
+
+/// Migrazione additiva: lavagna Excalidraw separata dal diagramma e snapshot
+/// della lavagna dentro le versioni esistenti.
+const SCHEMA_V2: &str = r#"
+    ALTER TABLE diagram_versions ADD COLUMN board_snapshot TEXT;
+
+    CREATE TABLE IF NOT EXISTS diagram_boards (
+        diagram_id TEXT PRIMARY KEY,
+        scene_json TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        base_source TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+"#;
+
+/// Applica le migrazioni in transazione: `user_version` viene aggiornata solo
+/// insieme allo schema, così un errore non lascia un DB a metà.
+fn migrate(conn: &mut Connection) -> Result<(), String> {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
+
     if version < 1 {
-        conn.execute_batch(
-            r#"
-            PRAGMA user_version = 1;
-
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS conversations (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                model_id TEXT NOT NULL DEFAULT '',
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT NOT NULL,
-                seq INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                content TEXT NOT NULL DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'complete',
-                model_id TEXT NOT NULL DEFAULT '',
-                target_diagram_id TEXT,
-                usage_json TEXT,
-                error TEXT,
-                created_at INTEGER NOT NULL,
-                UNIQUE(conversation_id, seq)
-            );
-
-            CREATE TABLE IF NOT EXISTS attachments (
-                id TEXT PRIMARY KEY,
-                message_id TEXT,
-                ordinal INTEGER NOT NULL DEFAULT 0,
-                kind TEXT NOT NULL,
-                filename TEXT NOT NULL,
-                mime TEXT NOT NULL DEFAULT '',
-                size INTEGER NOT NULL DEFAULT 0,
-                storage_path TEXT,
-                extracted_text TEXT NOT NULL DEFAULT '',
-                created_at INTEGER NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS diagrams (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT,
-                message_id TEXT,
-                ordinal INTEGER NOT NULL DEFAULT 0,
-                title TEXT NOT NULL,
-                source TEXT NOT NULL,
-                diagram_type TEXT NOT NULL DEFAULT 'unknown',
-                in_library INTEGER NOT NULL DEFAULT 0,
-                favorite INTEGER NOT NULL DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS diagram_versions (
-                id TEXT PRIMARY KEY,
-                diagram_id TEXT NOT NULL,
-                version_no INTEGER NOT NULL,
-                source TEXT NOT NULL,
-                origin TEXT NOT NULL,
-                created_at INTEGER NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_messages_conv_seq
-                ON messages(conversation_id, seq);
-            CREATE INDEX IF NOT EXISTS idx_attachments_message
-                ON attachments(message_id);
-            CREATE INDEX IF NOT EXISTS idx_diagrams_conv
-                ON diagrams(conversation_id, updated_at);
-            CREATE INDEX IF NOT EXISTS idx_diagrams_message
-                ON diagrams(message_id);
-            CREATE INDEX IF NOT EXISTS idx_diagram_versions
-                ON diagram_versions(diagram_id, version_no);
-            "#,
-        )
-        .map_err(|e| format!("Migrazione fallita: {e}"))?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(SCHEMA_V1)
+            .map_err(|e| format!("Migrazione v1 fallita: {e}"))?;
+        tx.pragma_update(None, "user_version", 1)
+            .map_err(|e| format!("Versione schema fallita: {e}"))?;
+        tx.commit().map_err(|e| format!("Commit migrazione v1 fallito: {e}"))?;
     }
+
+    if version < 2 {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(SCHEMA_V2)
+            .map_err(|e| format!("Migrazione v2 fallita: {e}"))?;
+        tx.pragma_update(None, "user_version", 2)
+            .map_err(|e| format!("Versione schema fallita: {e}"))?;
+        tx.commit().map_err(|e| format!("Commit migrazione v2 fallito: {e}"))?;
+    }
+
     Ok(())
 }
 
@@ -253,6 +288,12 @@ pub fn delete_conversation(conn: &mut Connection, id: &str, data_dir: &Path) -> 
     tx.execute(
         "UPDATE diagrams SET conversation_id=NULL, message_id=NULL
          WHERE conversation_id=?1 AND in_library=1",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM diagram_boards WHERE diagram_id IN
+         (SELECT id FROM diagrams WHERE conversation_id=?1 AND in_library=0)",
         params![id],
     )
     .map_err(|e| e.to_string())?;
@@ -606,14 +647,15 @@ fn insert_version(
     diagram_id: &str,
     source: &str,
     origin: &str,
+    board_snapshot: Option<&str>,
 ) -> Result<(), String> {
     let version_no = next_version_no(tx, diagram_id)?;
     let id = new_id();
     let now = now_ms();
     tx.execute(
-        "INSERT INTO diagram_versions(id,diagram_id,version_no,source,origin,created_at)
-         VALUES (?1,?2,?3,?4,?5,?6)",
-        params![id, diagram_id, version_no, source, origin, now],
+        "INSERT INTO diagram_versions(id,diagram_id,version_no,source,origin,board_snapshot,created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![id, diagram_id, version_no, source, origin, board_snapshot, now],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -680,7 +722,7 @@ pub fn diagrams_sync(
             )
             .map_err(|e| e.to_string())?;
             if existing.source != item.source {
-                insert_version(&tx, &existing.id, &item.source, "ai")?;
+                insert_version(&tx, &existing.id, &item.source, "ai", None)?;
             }
             continue;
         }
@@ -704,7 +746,7 @@ pub fn diagrams_sync(
             )
             .map_err(|e| e.to_string())?;
             if existing.source != item.source {
-                insert_version(&tx, &existing.id, &item.source, "ai")?;
+                insert_version(&tx, &existing.id, &item.source, "ai", None)?;
             }
         } else {
             let id = new_id();
@@ -725,7 +767,7 @@ pub fn diagrams_sync(
                 ],
             )
             .map_err(|e| e.to_string())?;
-            insert_version(&tx, &id, &item.source, "ai")?;
+            insert_version(&tx, &id, &item.source, "ai", None)?;
         }
     }
 
@@ -745,7 +787,20 @@ pub fn save_diagram_version(
         .filter(|s| !s.is_empty())
         .unwrap_or(&current.title)
         .to_string();
-    let changed = current.source != source;
+    let board = get_board(conn, id)?;
+    let last_snapshot: Option<String> = conn
+        .query_row(
+            "SELECT board_snapshot FROM diagram_versions
+             WHERE diagram_id=?1 ORDER BY version_no DESC LIMIT 1",
+            params![id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .flatten();
+    let board_scene = board.as_ref().map(|item| item.scene_json.as_str());
+    let changed =
+        current.source != source || board_scene.map(str::to_string) != last_snapshot;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "UPDATE diagrams SET title=?1, source=?2, updated_at=?3 WHERE id=?4",
@@ -753,7 +808,7 @@ pub fn save_diagram_version(
     )
     .map_err(|e| e.to_string())?;
     if changed {
-        insert_version(&tx, id, source, "user")?;
+        insert_version(&tx, id, source, "user", board_scene)?;
     }
     tx.commit().map_err(|e| e.to_string())?;
     get_diagram(conn, id)?.ok_or_else(|| "Diagramma non trovato".to_string())
@@ -778,6 +833,8 @@ pub fn set_diagram_flags(
 
 pub fn delete_diagram(conn: &mut Connection, id: &str) -> Result<(), String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM diagram_boards WHERE diagram_id=?1", params![id])
+        .map_err(|e| e.to_string())?;
     tx.execute(
         "DELETE FROM diagram_versions WHERE diagram_id=?1",
         params![id],
@@ -792,7 +849,7 @@ pub fn delete_diagram(conn: &mut Connection, id: &str) -> Result<(), String> {
 pub fn list_versions(conn: &Connection, diagram_id: &str) -> Result<Vec<DiagramVersion>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id,diagram_id,version_no,source,origin,created_at
+            "SELECT id,diagram_id,version_no,source,origin,board_snapshot,created_at
              FROM diagram_versions WHERE diagram_id=?1 ORDER BY version_no DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -804,7 +861,8 @@ pub fn list_versions(conn: &Connection, diagram_id: &str) -> Result<Vec<DiagramV
                 version_no: row.get(2)?,
                 source: row.get(3)?,
                 origin: row.get(4)?,
-                created_at: row.get(5)?,
+                board_snapshot: row.get(5)?,
+                created_at: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -817,11 +875,11 @@ pub fn restore_version(
     diagram_id: &str,
     version_id: &str,
 ) -> Result<Diagram, String> {
-    let source: String = conn
+    let (source, snapshot): (String, Option<String>) = conn
         .query_row(
-            "SELECT source FROM diagram_versions WHERE id=?1 AND diagram_id=?2",
+            "SELECT source,board_snapshot FROM diagram_versions WHERE id=?1 AND diagram_id=?2",
             params![version_id, diagram_id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -830,9 +888,141 @@ pub fn restore_version(
         params![source, now_ms(), diagram_id],
     )
     .map_err(|e| e.to_string())?;
-    insert_version(&tx, diagram_id, &source, "restore")?;
+    if let Some(scene) = snapshot.as_deref() {
+        if scene.len() > MAX_BOARD_BYTES {
+            return Err("Snapshot lavagna troppo grande (max 25 MB)".into());
+        }
+        let current: Option<(String, Option<String>)> = tx
+            .query_row(
+                "SELECT origin,base_source FROM diagram_boards WHERE diagram_id=?1",
+                params![diagram_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match current {
+            Some((origin, _)) => {
+                let base = if origin == "manual" {
+                    None
+                } else {
+                    Some(source.as_str())
+                };
+                tx.execute(
+                    "UPDATE diagram_boards SET scene_json=?1, base_source=?2, updated_at=?3
+                     WHERE diagram_id=?4",
+                    params![scene, base, now_ms(), diagram_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO diagram_boards(diagram_id,scene_json,origin,base_source,created_at,updated_at)
+                     VALUES (?1,?2,'diagram',?3,?4,?4)",
+                    params![diagram_id, scene, source.as_str(), now_ms()],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    insert_version(&tx, diagram_id, &source, "restore", snapshot.as_deref())?;
     tx.commit().map_err(|e| e.to_string())?;
     get_diagram(conn, diagram_id)?.ok_or_else(|| "Diagramma non trovato".to_string())
+}
+
+fn map_board(row: &rusqlite::Row<'_>) -> rusqlite::Result<DiagramBoard> {
+    Ok(DiagramBoard {
+        diagram_id: row.get(0)?,
+        scene_json: row.get(1)?,
+        origin: row.get(2)?,
+        base_source: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
+pub fn get_board(conn: &Connection, diagram_id: &str) -> Result<Option<DiagramBoard>, String> {
+    conn.query_row(
+        "SELECT diagram_id,scene_json,origin,base_source,created_at,updated_at
+         FROM diagram_boards WHERE diagram_id=?1",
+        params![diagram_id],
+        map_board,
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+fn validate_board_scene(scene_json: &str) -> Result<(), String> {
+    if scene_json.trim().is_empty() {
+        return Err("Scena lavagna vuota".into());
+    }
+    if scene_json.len() > MAX_BOARD_BYTES {
+        return Err("Lavagna troppo grande (max 25 MB)".into());
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(scene_json).map_err(|e| format!("Scena lavagna non valida: {e}"))?;
+    if !value.is_object() {
+        return Err("Scena lavagna non valida: atteso un oggetto JSON".into());
+    }
+    Ok(())
+}
+
+/// Crea o sostituisce una lavagna, impostando anche origine e base source.
+/// Usata alla creazione, alla rigenerazione e al ripristino.
+pub fn create_board(
+    conn: &Connection,
+    diagram_id: &str,
+    scene_json: &str,
+    origin: &str,
+    base_source: Option<&str>,
+) -> Result<DiagramBoard, String> {
+    if origin != "diagram" && origin != "manual" {
+        return Err(format!("Origine lavagna non valida: {origin}"));
+    }
+    validate_board_scene(scene_json)?;
+    get_diagram(conn, diagram_id)?.ok_or_else(|| "Diagramma non trovato".to_string())?;
+    let now = now_ms();
+    let base = if origin == "manual" { None } else { base_source };
+    conn.execute(
+        "INSERT INTO diagram_boards(diagram_id,scene_json,origin,base_source,created_at,updated_at)
+         VALUES (?1,?2,?3,?4,?5,?5)
+         ON CONFLICT(diagram_id) DO UPDATE SET
+             scene_json=excluded.scene_json,
+             origin=excluded.origin,
+             base_source=excluded.base_source,
+             updated_at=excluded.updated_at",
+        params![diagram_id, scene_json, origin, base, now],
+    )
+    .map_err(|e| e.to_string())?;
+    get_board(conn, diagram_id)?.ok_or_else(|| "Lavagna non trovata".to_string())
+}
+
+/// Autosave: aggiorna solo scena e timestamp. Origine e base source restano
+/// quelli impostati alla creazione/rigenerazione.
+pub fn save_board_scene(
+    conn: &Connection,
+    diagram_id: &str,
+    scene_json: &str,
+) -> Result<DiagramBoard, String> {
+    validate_board_scene(scene_json)?;
+    let changed = conn
+        .execute(
+            "UPDATE diagram_boards SET scene_json=?1, updated_at=?2 WHERE diagram_id=?3",
+            params![scene_json, now_ms(), diagram_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("Lavagna non trovata".into());
+    }
+    get_board(conn, diagram_id)?.ok_or_else(|| "Lavagna non trovata".to_string())
+}
+
+pub fn delete_board(conn: &Connection, diagram_id: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM diagram_boards WHERE diagram_id=?1",
+        params![diagram_id],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, String> {
@@ -868,4 +1058,224 @@ pub fn settings_map(conn: &Connection) -> Result<HashMap<String, String>, String
         map.insert(k, v);
     }
     Ok(map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open_v1() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        conn
+    }
+
+    fn migrated() -> Connection {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn).unwrap();
+        conn
+    }
+
+    fn insert_diagram(conn: &Connection, id: &str, conversation_id: Option<&str>, in_library: bool) {
+        conn.execute(
+            "INSERT INTO diagrams(id,conversation_id,message_id,ordinal,title,source,
+                    diagram_type,in_library,favorite,created_at,updated_at)
+             VALUES (?1,?2,NULL,0,'Test','flowchart LR\n A-->B','flowchart',?3,0,1,1)",
+            params![id, conversation_id, in_library as i64],
+        )
+        .unwrap();
+    }
+
+    fn scene(label: &str) -> String {
+        format!(
+            r##"{{"type":"excalidraw","version":2,"source":"test","elements":[{{"id":"{label}"}}],"appState":{{"viewBackgroundColor":"#fff"}},"files":{{}}}}"##
+        )
+    }
+
+    fn versions(conn: &Connection, id: &str) -> Vec<DiagramVersion> {
+        list_versions(conn, id).unwrap()
+    }
+
+    #[test]
+    fn migrates_v1_to_v2_preserving_data() {
+        let mut conn = open_v1();
+        insert_diagram(&conn, "d1", None, false);
+        conn.execute(
+            "INSERT INTO diagram_versions(id,diagram_id,version_no,source,origin,created_at)
+             VALUES ('v1','d1',1,'flowchart LR\n A-->B','ai',1)",
+            [],
+        )
+        .unwrap();
+
+        migrate(&mut conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 2);
+        assert_eq!(get_diagram(&conn, "d1").unwrap().unwrap().title, "Test");
+        let old = versions(&conn, "d1");
+        assert_eq!(old.len(), 1);
+        assert_eq!(old[0].source, "flowchart LR\n A-->B");
+        assert!(old[0].board_snapshot.is_none());
+        assert!(get_board(&conn, "d1").unwrap().is_none());
+    }
+
+    #[test]
+    fn failed_v2_migration_does_not_bump_user_version() {
+        let mut conn = open_v1();
+        // Simula uno schema parziale: la ALTER TABLE della v2 fallisce.
+        conn.execute_batch("ALTER TABLE diagram_versions ADD COLUMN board_snapshot TEXT;")
+            .unwrap();
+
+        assert!(migrate(&mut conn).is_err());
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 1);
+    }
+
+    #[test]
+    fn board_crud_keeps_origin_and_base_source_on_autosave() {
+        let conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+
+        let created = create_board(&conn, "d1", &scene("a"), "diagram", Some("src-1")).unwrap();
+        assert_eq!(created.origin, "diagram");
+        assert_eq!(created.base_source.as_deref(), Some("src-1"));
+        assert!(get_board(&conn, "d1").unwrap().is_some());
+
+        let saved = save_board_scene(&conn, "d1", &scene("b")).unwrap();
+        assert_eq!(saved.scene_json, scene("b"));
+        assert_eq!(saved.origin, "diagram");
+        assert_eq!(saved.base_source.as_deref(), Some("src-1"));
+        assert_eq!(saved.created_at, created.created_at);
+
+        delete_board(&conn, "d1").unwrap();
+        assert!(get_board(&conn, "d1").unwrap().is_none());
+    }
+
+    #[test]
+    fn manual_board_has_no_base_source() {
+        let conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        let board = create_board(&conn, "d1", &scene("a"), "manual", Some("ignored")).unwrap();
+        assert_eq!(board.origin, "manual");
+        assert!(board.base_source.is_none());
+    }
+
+    #[test]
+    fn rejects_oversized_and_invalid_scenes() {
+        let conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        assert!(create_board(&conn, "d1", "not json", "manual", None).is_err());
+        assert!(create_board(&conn, "d1", "", "manual", None).is_err());
+        let huge = "x".repeat(MAX_BOARD_BYTES + 1);
+        assert!(create_board(&conn, "d1", &huge, "manual", None)
+            .unwrap_err()
+            .contains("troppo grande"));
+    }
+
+    #[test]
+    fn deleting_a_diagram_removes_board_and_versions() {
+        let mut conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        create_board(&conn, "d1", &scene("a"), "manual", None).unwrap();
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+
+        delete_diagram(&mut conn, "d1").unwrap();
+        assert!(get_board(&conn, "d1").unwrap().is_none());
+        assert!(versions(&conn, "d1").is_empty());
+    }
+
+    #[test]
+    fn deleting_a_conversation_removes_boards_but_keeps_library_diagrams() {
+        let mut conn = migrated();
+        let conv = create_conversation(&conn, "Chat", "").unwrap();
+        insert_diagram(&conn, "ephemeral", Some(&conv.id), false);
+        insert_diagram(&conn, "kept", Some(&conv.id), true);
+        create_board(&conn, "ephemeral", &scene("a"), "manual", None).unwrap();
+        create_board(&conn, "kept", &scene("b"), "manual", None).unwrap();
+
+        delete_conversation(&mut conn, &conv.id, &std::env::temp_dir()).unwrap();
+        assert!(get_diagram(&conn, "ephemeral").unwrap().is_none());
+        assert!(get_board(&conn, "ephemeral").unwrap().is_none());
+        assert!(get_diagram(&conn, "kept").unwrap().is_some());
+        assert!(get_board(&conn, "kept").unwrap().is_some());
+    }
+
+    #[test]
+    fn version_is_created_when_only_the_board_changes() {
+        let mut conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        create_board(&conn, "d1", &scene("a"), "diagram", Some("flowchart LR\n A-->B")).unwrap();
+
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        assert_eq!(versions(&conn, "d1").len(), 1);
+
+        // Stesso sorgente, scena diversa: nuova versione con snapshot.
+        save_board_scene(&conn, "d1", &scene("b")).unwrap();
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        let list = versions(&conn, "d1");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].board_snapshot.as_deref(), Some(scene("b").as_str()));
+
+        // Nessun cambiamento: non si crea una terza versione.
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        assert_eq!(versions(&conn, "d1").len(), 2);
+    }
+
+    #[test]
+    fn restoring_a_version_with_snapshot_restores_both_sides() {
+        let mut conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        let base = "flowchart LR\n A-->B";
+        conn.execute(
+            "UPDATE diagrams SET source=?1 WHERE id='d1'",
+            params![base],
+        )
+        .unwrap();
+        create_board(&conn, "d1", &scene("saved"), "diagram", Some(base)).unwrap();
+        save_diagram_version(&mut conn, "d1", base, None).unwrap();
+        let version_id = versions(&conn, "d1")[0].id.clone();
+
+        // L'utente modifica entrambi i lati.
+        conn.execute(
+            "UPDATE diagrams SET source='flowchart LR\n A-->C' WHERE id='d1'",
+            [],
+        )
+        .unwrap();
+        save_board_scene(&conn, "d1", &scene("edited")).unwrap();
+
+        restore_version(&mut conn, "d1", &version_id).unwrap();
+        let diagram = get_diagram(&conn, "d1").unwrap().unwrap();
+        let board = get_board(&conn, "d1").unwrap().unwrap();
+        assert_eq!(diagram.source, base);
+        assert_eq!(board.scene_json, scene("saved"));
+        assert_eq!(board.origin, "diagram");
+        assert_eq!(board.base_source.as_deref(), Some(base));
+    }
+
+    #[test]
+    fn restoring_without_snapshot_leaves_the_board_untouched() {
+        let mut conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        let current = "flowchart LR\n A-->B";
+        conn.execute("UPDATE diagrams SET source=?1 WHERE id='d1'", params![current])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO diagram_versions(id,diagram_id,version_no,source,origin,created_at)
+             VALUES ('old','d1',1,'flowchart LR\n X-->Y','user',1)",
+            [],
+        )
+        .unwrap();
+        create_board(&conn, "d1", &scene("manual-work"), "diagram", Some(current)).unwrap();
+
+        restore_version(&mut conn, "d1", "old").unwrap();
+        let board = get_board(&conn, "d1").unwrap().unwrap();
+        assert_eq!(board.scene_json, scene("manual-work"));
+        // Il client calcola stale: base_source non coincide col sorgente ripristinato.
+        assert_ne!(board.base_source.as_deref(), Some("flowchart LR\n X-->Y"));
+    }
 }

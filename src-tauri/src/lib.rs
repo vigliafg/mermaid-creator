@@ -68,6 +68,10 @@ pub fn run() {
             commands::diagram_set_flags,
             commands::diagram_delete,
             commands::diagram_versions,
+            commands::board_get,
+            commands::board_create,
+            commands::board_save,
+            commands::board_delete,
             commands::save_file,
             commands::app_info,
         ])

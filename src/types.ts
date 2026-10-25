@@ -54,8 +54,25 @@ export interface DiagramVersion {
   versionNo: number;
   source: string;
   origin: string;
+  /** Scena Excalidraw salvata insieme alla versione, se esisteva. */
+  boardSnapshot: string | null;
   createdAt: number;
 }
+
+export type BoardOrigin = "diagram" | "manual";
+
+export interface DiagramBoard {
+  diagramId: string;
+  /** Documento Excalidraw completo: elements + appState + files. */
+  sceneJson: string;
+  origin: BoardOrigin;
+  /** Sorgente Mermaid esatto da cui è stata generata (null se manuale). */
+  baseSource: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type BoardQuality = "semantic" | "generic" | "image";
 
 export interface ModelInfo {
   id: string;

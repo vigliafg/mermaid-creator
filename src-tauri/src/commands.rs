@@ -536,6 +536,43 @@ pub fn diagram_delete(state: State<'_, AppState>, id: String) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub fn board_get(
+    state: State<'_, AppState>,
+    diagram_id: String,
+) -> Result<Option<DiagramBoard>, String> {
+    let conn = lock_db(&state)?;
+    db::get_board(&conn, &diagram_id)
+}
+
+#[tauri::command]
+pub fn board_create(
+    state: State<'_, AppState>,
+    diagram_id: String,
+    scene_json: String,
+    origin: String,
+    base_source: Option<String>,
+) -> Result<DiagramBoard, String> {
+    let conn = lock_db(&state)?;
+    db::create_board(&conn, &diagram_id, &scene_json, &origin, base_source.as_deref())
+}
+
+#[tauri::command]
+pub fn board_save(
+    state: State<'_, AppState>,
+    diagram_id: String,
+    scene_json: String,
+) -> Result<DiagramBoard, String> {
+    let conn = lock_db(&state)?;
+    db::save_board_scene(&conn, &diagram_id, &scene_json)
+}
+
+#[tauri::command]
+pub fn board_delete(state: State<'_, AppState>, diagram_id: String) -> Result<(), String> {
+    let conn = lock_db(&state)?;
+    db::delete_board(&conn, &diagram_id)
+}
+
+#[tauri::command]
 pub fn diagram_versions(
     state: State<'_, AppState>,
     id: String,

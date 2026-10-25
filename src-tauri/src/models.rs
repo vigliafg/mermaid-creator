@@ -67,7 +67,24 @@ pub struct DiagramVersion {
     pub version_no: i64,
     pub source: String,
     pub origin: String,
+    /// Scena Excalidraw inclusa nella versione, se la lavagna esisteva.
+    #[serde(default)]
+    pub board_snapshot: Option<String>,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramBoard {
+    pub diagram_id: String,
+    /// Documento Excalidraw completo: elements + appState + files.
+    pub scene_json: String,
+    /// "diagram" quando è derivata dal sorgente, "manual" se disegnata da zero.
+    pub origin: String,
+    /// Sorgente Mermaid esatto da cui è stata generata (null per manuale).
+    pub base_source: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
