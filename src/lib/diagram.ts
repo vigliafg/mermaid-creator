@@ -1,4 +1,5 @@
 import { render as peleRender } from "pele";
+import { runInSharedMermaidQueue } from "./board/mermaidQueue";
 import {
   applyThemeToSvg,
   detectRenderer,
@@ -246,9 +247,11 @@ export async function renderDiagram(
     };
   } catch (peleError) {
     try {
-      const mermaid = await getMermaid(tokens);
       const id = `mc-${crypto.randomUUID()}`;
-      const result = await mermaid.render(id, source);
+      const result = await runInSharedMermaidQueue(async () => {
+        const mermaid = await getMermaid(tokens);
+        return mermaid.render(id, source);
+      });
       const svg = applyThemeToSvg(result.svg, tokens, "mermaid", { background: true });
       const size = viewBoxSize(svg);
       return {
