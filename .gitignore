@@ -7,3 +7,4 @@ target/
 *.sqlite-*
 .DS_Store
 *.log
+public/excalidraw-assets/
