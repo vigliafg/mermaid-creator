@@ -1,4 +1,5 @@
 import { save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertTriangle,
   Bookmark,
@@ -19,6 +20,7 @@ import {
   PanelRightOpen,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCcw,
   Save,
   SlidersHorizontal,
@@ -27,6 +29,8 @@ import {
   Undo2,
   Redo2,
   Maximize2,
+  MoreHorizontal,
+  PenTool,
   Workflow,
   ZoomIn,
   ZoomOut,
@@ -89,6 +93,32 @@ import {
 } from "../lib/diagram/theme";
 import { useApp } from "../store";
 import type { Diagram } from "../types";
+import {
+  convertMermaidToBoard,
+  conversionQualityMessage,
+  BoardConversionError,
+  type ConversionResult,
+} from "../lib/board/conversion";
+import {
+  boardExcalidrawJson,
+  boardPngBase64,
+  boardSvg,
+  copyBoardPng,
+  copyBoardSvg,
+  copyTextFallback,
+} from "../lib/board/export";
+import { imageSceneFromSvg } from "../lib/board/image";
+import {
+  emptyBoardScene,
+  isBoardStale,
+  parseBoardScene,
+  serializeBoardScene,
+  type BoardScene,
+} from "../lib/board/scene";
+import { useBoardAutosave } from "../lib/board/useBoardAutosave";
+import { BoardCanvas, type BoardCanvasHandle } from "./board/BoardCanvas";
+import { BoardFirstRun } from "./board/BoardFirstRun";
+import { BoardStatusBar } from "./board/BoardStatusBar";
 import { DiagramStage, type DiagramStageHandle, type LabelEditState } from "./workspace/DiagramStage";
 import { Inspector } from "./workspace/Inspector";
 import { SourceEditor } from "./workspace/SourceEditor";
@@ -171,6 +201,20 @@ export function WorkspacePane() {
   const toggleViewerExpanded = useApp((s) => s.toggleViewerExpanded);
   const settings = useApp((s) => s.settings);
   const mode = (settings.theme === "light" ? "light" : "dark") as "dark" | "light";
+  const workspaceMode = useApp((s) => s.workspaceMode);
+  const streaming = useApp((s) => s.streaming);
+  const board = useApp((s) => s.board);
+  const boardLoading = useApp((s) => s.boardLoading);
+  const boardEpoch = useApp((s) => s.boardEpoch);
+  const boardError = useApp((s) => s.boardError);
+  const boardSaveError = useApp((s) => s.boardSaveError);
+  const setWorkspaceMode = useApp((s) => s.setWorkspaceMode);
+  const loadBoard = useApp((s) => s.loadBoard);
+  const replaceBoard = useApp((s) => s.replaceBoard);
+  const setBoardSaveError = useApp((s) => s.setBoardSaveError);
+  const registerBoardFlush = useApp((s) => s.registerBoardFlush);
+  const flushBoard = useApp((s) => s.flushBoard);
+  const focusChat = useApp((s) => s.focusChat);
   const selectDiagram = useApp((s) => s.selectDiagram);
   const saveDiagram = useApp((s) => s.saveDiagram);
   const restoreVersion = useApp((s) => s.restoreVersion);
@@ -205,6 +249,15 @@ export function WorkspacePane() {
   const [reveal, setReveal] = useState<{ from: number; to: number; line: number } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [conversionError, setConversionError] = useState("");
+  const [conversionMeta, setConversionMeta] = useState<{
+    quality: "semantic" | "generic" | "image";
+    type: string;
+  } | null>(null);
+  const [boardBusy, setBoardBusy] = useState(false);
+  const [boardActionError, setBoardActionError] = useState("");
+  const boardHandleRef = useRef<BoardCanvasHandle | null>(null);
 
   const stageRef = useRef<DiagramStageHandle>(null);
   const sourceRef = useRef(source);
@@ -223,6 +276,28 @@ export function WorkspacePane() {
   const workspaceBg = settings.workspace_bg ?? "auto";
   const workspaceGrid = settings.workspace_grid !== "0";
   const canEditLabels = doc.capabilities.structure && doc.kind === "flowchart";
+  const boardSceneResult = useMemo(() => {
+    if (!board) return { scene: null as BoardScene | null, error: "" };
+    try {
+      return { scene: parseBoardScene(board.sceneJson), error: "" };
+    } catch (error) {
+      return {
+        scene: null as BoardScene | null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [board]);
+
+  const autosave = useBoardAutosave({
+    diagramId: workspaceMode === "board" ? (diagram?.id ?? null) : null,
+    onError: (message) => setBoardSaveError(message),
+  });
+
+  useEffect(() => {
+    registerBoardFlush(autosave.flush);
+    return () => registerBoardFlush(null);
+  }, [autosave.flush, registerBoardFlush]);
+
   const workspaceStyle = {
     "--workspace-bg": workspaceBg === "auto" ? "var(--bg)" : workspaceBg,
     "--workspace-grid": workspaceGrid
@@ -280,6 +355,14 @@ export function WorkspacePane() {
   useEffect(() => {
     sourceRef.current = source;
   }, [source]);
+
+  useEffect(() => {
+    if (workspaceMode === "board" && board) {
+      autosave.reset(board.sceneJson);
+    }
+    // Solo al cambio modalità/epoca: l'autosave non deve risettare se stesso.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceMode, boardEpoch]);
 
   useEffect(() => {
     setDiagramDirty(dirty);
@@ -450,22 +533,176 @@ export function WorkspacePane() {
     }
   };
 
-  const saveCurrent = async () => {
+  const switchToBoard = async () => {
+    if (!diagram || workspaceMode === "board") return;
+    if (dirty) {
+      const ok = await saveCurrent();
+      if (!ok) return;
+    }
+    setConversionError("");
+    setBoardActionError("");
+    setConversionMeta(null);
+    setWorkspaceMode("board");
+    await loadBoard();
+  };
+
+  const switchToDiagram = async () => {
+    if (workspaceMode !== "board") return;
+    if (!(await flushBoard())) return;
+    boardHandleRef.current = null;
+    setWorkspaceMode("diagram");
+  };
+
+  const createBoard = async (kind: "convert" | "manual" | "image") => {
     if (!diagram) return;
+    if (streaming) {
+      toast.info("Attendi la fine della generazione prima di creare la lavagna");
+      return;
+    }
+    setConversionError("");
+    setBoardActionError("");
+    setConverting(true);
+    try {
+      let scene: BoardScene;
+      let origin: "diagram" | "manual";
+      let baseSource: string | null = null;
+      let meta: { quality: "semantic" | "generic" | "image"; type: string } | null =
+        null;
+      if (kind === "convert") {
+        const result: ConversionResult = await convertMermaidToBoard(
+          source,
+          theme,
+          mode,
+        );
+        scene = result.scene;
+        origin = "diagram";
+        baseSource = source;
+        meta = { quality: result.quality, type: result.type };
+        if (result.quality !== "semantic") {
+          setConversionMeta(meta);
+        }
+      } else if (kind === "manual") {
+        scene = emptyBoardScene(mode);
+        origin = "manual";
+      } else {
+        const fresh = await withFreshRender();
+        scene = imageSceneFromSvg(
+          fresh.svg,
+          fresh.width,
+          fresh.height,
+          theme,
+          mode,
+        );
+        origin = "diagram";
+        baseSource = source;
+        meta = { quality: "image", type: doc.kind };
+        setConversionMeta(meta);
+      }
+      const created = await api.boardCreate(
+        diagram.id,
+        serializeBoardScene(scene),
+        origin,
+        baseSource,
+      );
+      replaceBoard(created);
+      autosave.reset(created.sceneJson);
+      if (kind === "manual") {
+        toast.success("Lavagna pronta: disegna liberamente");
+      } else if (meta?.quality === "image") {
+        toast.info("Lavagna creata con un'immagine Mermaid");
+      } else {
+        toast.success("Lavagna creata");
+      }
+    } catch (error) {
+      const detail =
+        error instanceof BoardConversionError || error instanceof Error
+          ? error.message
+          : String(error);
+      setConversionError(detail);
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const regenerateBoard = async (saveFirst: boolean) => {
+    if (!diagram) return;
+    if (streaming) {
+      toast.info("Attendi la fine della generazione prima di aggiornare la lavagna");
+      return;
+    }
+    if (!source.trim()) {
+      toast.error("Il sorgente è vuoto: correggilo prima di rigenerare");
+      return;
+    }
+    if (saveFirst) {
+      const ok = await saveCurrent(true);
+      if (!ok) return;
+    } else if (
+      !window.confirm(
+        "La lavagna attuale sarà sostituita dalla conversione del sorgente. Se vuoi poterla ripristinare, usa «Salva e aggiorna». Continuare?",
+      )
+    ) {
+      return;
+    }
+    setBoardBusy(true);
+    setBoardActionError("");
+    try {
+      const result = await convertMermaidToBoard(source, theme, mode);
+      const saved = await api.boardCreate(
+        diagram.id,
+        serializeBoardScene(result.scene),
+        "diagram",
+        source,
+      );
+      replaceBoard(saved);
+      autosave.reset(saved.sceneJson);
+      setConversionMeta({ quality: result.quality, type: result.type });
+      toast.success("Lavagna aggiornata dal diagramma");
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : String(error);
+      setBoardActionError(detail);
+      toast.error(`Aggiornamento lavagna: ${detail}`);
+    } finally {
+      setBoardBusy(false);
+    }
+  };
+
+  const openDiagramFromBoard = async () => {
+    await switchToDiagram();
+  };
+
+  const editBoardWithAi = async () => {
+    if (!diagram) return;
+    if (!(await flushBoard())) return;
+    setWorkspaceMode("diagram");
+    focusChat(diagram.id);
+  };
+
+  const openBoardSource = () => {
+    boardHandleRef.current = null;
+    setWorkspaceMode("diagram");
+    setSideOpen(true);
+    setSideTab("source");
+  };
+
+  const saveCurrent = async (force = false): Promise<boolean> => {
+    if (!diagram) return false;
     if (!source.trim()) {
       toast.error("Il sorgente è vuoto");
-      return;
+      return false;
     }
     const savingSource = source;
     const previousPersisted = lastPersistedSourceRef.current;
     lastPersistedSourceRef.current = savingSource;
-    const ok = await saveDiagram(savingSource, diagram.title);
+    const ok = await saveDiagram(savingSource, diagram.title, force);
     if (ok) {
       setSavedSource(savingSource);
       setDiagramDirty(sourceRef.current !== savingSource);
     } else {
       lastPersistedSourceRef.current = previousPersisted;
     }
+    return ok;
   };
 
   const revealSelection = () => {
@@ -689,6 +926,108 @@ export function WorkspacePane() {
     }
   };
 
+  const boardFileStem = () => `${slug(diagram?.title ?? "lavagna")}-lavagna`;
+
+  const exportBoardPngFile = async (scale: 1 | 2 | 3, background: boolean) => {
+    if (!diagram) return;
+    setExporting(true);
+    try {
+      const path = await save({
+        defaultPath: `${boardFileStem()}-${scale}x${background ? "" : "-trasparente"}.png`,
+        filters: [{ name: "PNG", extensions: ["png"] }],
+      });
+      if (path) {
+        const data = await boardPngBase64(boardHandleRef.current, scale, background);
+        await api.saveFile(path, data, true);
+        toast.success(`PNG ${scale}x ${background ? "con sfondo" : "trasparente"} esportato`);
+      }
+    } catch (error) {
+      toast.error(`Export lavagna PNG: ${String(error)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportBoardSvgFile = async (background: boolean) => {
+    if (!diagram) return;
+    setExporting(true);
+    try {
+      const path = await save({
+        defaultPath: `${boardFileStem()}${background ? "" : "-trasparente"}.svg`,
+        filters: [{ name: "SVG", extensions: ["svg"] }],
+      });
+      if (path) {
+        const data = await boardSvg(boardHandleRef.current, background);
+        await api.saveFile(path, data, false);
+        toast.success(`SVG ${background ? "con sfondo" : "trasparente"} esportato`);
+      }
+    } catch (error) {
+      toast.error(`Export lavagna SVG: ${String(error)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportBoardScene = async () => {
+    if (!diagram) return;
+    setExporting(true);
+    try {
+      const path = await save({
+        defaultPath: `${boardFileStem()}.excalidraw`,
+        filters: [{ name: "Excalidraw", extensions: ["excalidraw"] }],
+      });
+      if (path) {
+        await api.saveFile(path, boardExcalidrawJson(boardHandleRef.current), false);
+        toast.success("Scena .excalidraw esportata");
+      }
+    } catch (error) {
+      toast.error(`Export scena: ${String(error)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const copyBoard = async (kind: "png" | "svg") => {
+    try {
+      if (kind === "png") {
+        const result = await copyBoardPng(boardHandleRef.current);
+        if (result === "ok") {
+          toast.success("PNG copiato");
+          return;
+        }
+        const svg = await boardSvg(boardHandleRef.current, true);
+        if (copyTextFallback(svg)) {
+          toast.info("Copia PNG non disponibile: ho copiato l'SVG");
+        } else {
+          toast.error("Copia non supportata: usa Esporta");
+        }
+        return;
+      }
+      const result = await copyBoardSvg(boardHandleRef.current);
+      if (result === "ok") {
+        toast.success("SVG copiato");
+        return;
+      }
+      const svg = await boardSvg(boardHandleRef.current, true);
+      if (copyTextFallback(svg)) toast.success("SVG copiato");
+      else toast.error("Copia non supportata: usa Esporta");
+    } catch (error) {
+      toast.error(`Copia lavagna: ${String(error)}`);
+    }
+  };
+
+  const openBoardLink = async (url: string) => {
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error("Apro solo link http/https nel browser di sistema");
+      return;
+    }
+    try {
+      await openUrl(url);
+    } catch (error) {
+      toast.error(`Apertura link: ${String(error)}`);
+    }
+  };
+
   const rename = async () => {
     if (!diagram) return;
     const title = window.prompt("Titolo del diagramma", diagram.title);
@@ -703,6 +1042,7 @@ export function WorkspacePane() {
     } else {
       lastPersistedSourceRef.current = previousPersisted;
     }
+    return ok;
   };
 
   useEffect(() => {
@@ -715,6 +1055,8 @@ export function WorkspacePane() {
         void saveCurrent();
         return;
       }
+      // In lavagna le scorciatoie dell'app non devono intercettare Excalidraw.
+      if (workspaceMode === "board") return;
       if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "z" &&
@@ -757,7 +1099,7 @@ export function WorkspacePane() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, selections, past, future, diagram?.id]);
+  }, [source, selections, past, future, diagram?.id, workspaceMode]);
 
   if (!diagram) {
     return (
@@ -774,7 +1116,7 @@ export function WorkspacePane() {
     <aside className={`workspace-pane ${viewerExpanded ? "is-expanded" : ""}`}>
       {viewerExpanded && <RestoreRail onRestore={toggleViewerExpanded} />}
       <div className="workspace-core">
-      <header className="workspace-header">
+      <header className={`workspace-header ${workspaceMode === "board" ? "is-board" : ""}`}>
         <div className="workspace-heading">
           {!viewerExpanded && (
             <button
@@ -785,57 +1127,157 @@ export function WorkspacePane() {
               <ChevronsLeft size={16} />
             </button>
           )}
-        <div className="workspace-title">
-          <div className="eyebrow">
-            {render ? `render: ${render.renderer}` : "diagramma"} · {doc.kind} ·{" "}
-            {themeLabel(theme)}
+          <div className="workspace-title">
+            <div className="eyebrow">
+              {workspaceMode === "board"
+                ? `lavagna · ${themeLabel(theme)}`
+                : `${render ? `render: ${render.renderer}` : "diagramma"} · ${doc.kind} · ${themeLabel(theme)}`}
+            </div>
+            <h2>{diagram.title}</h2>
           </div>
-          <h2>{diagram.title}</h2>
         </div>
+
+        <div className="workspace-header-center">
+          <div className="workspace-switch" role="tablist" aria-label="Superficie di lavoro">
+            <button
+              role="tab"
+              aria-selected={workspaceMode === "diagram"}
+              className={workspaceMode === "diagram" ? "active" : ""}
+              onClick={() => void switchToDiagram()}
+              disabled={converting}
+            >
+              <Workflow size={13} />
+              <span>Diagramma</span>
+            </button>
+            <button
+              role="tab"
+              aria-selected={workspaceMode === "board"}
+              className={workspaceMode === "board" ? "active" : ""}
+              onClick={() => void switchToBoard()}
+              disabled={converting}
+              title="Apri la lavagna Excalidraw"
+            >
+              <PenTool size={13} />
+              <span>Lavagna</span>
+            </button>
+          </div>
         </div>
+
         <div className="workspace-actions">
-          <button
-            className="icon-btn"
-            title="Torna alla galleria"
-            onClick={() => void selectDiagram(null)}
-          >
-            <Workflow size={16} />
-          </button>
-          <button
-            className="icon-btn"
-            title={diagram.inLibrary ? "Rimuovi dalla libreria" : "Salva in libreria"}
-            onClick={() => void toggleLibrary(diagram.id)}
-          >
-            {diagram.inLibrary ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
-          </button>
-          <button
-            className={`icon-btn ${diagram.favorite ? "star-on" : ""}`}
-            title="Preferito"
-            onClick={() => void toggleFavorite(diagram.id)}
-          >
-            <Star size={17} />
-          </button>
-          <button className="icon-btn" title="Rinomina" onClick={() => void rename()}>
-            <Pencil size={16} />
-          </button>
-          <button
-            className="icon-btn danger"
-            title="Elimina diagramma"
-            onClick={() => {
-              if (dirty) {
-                toast.warning("Salva o annulla le modifiche al diagramma prima di eliminarlo");
-                return;
-              }
-              if (window.confirm(`Eliminare “${diagram.title}”?`)) {
-                void deleteDiagram(diagram.id);
-              }
-            }}
-          >
-            <Trash2 size={16} />
-          </button>
+          {workspaceMode === "diagram" ? (
+            <>
+              <button
+                className="icon-btn"
+                title="Torna alla galleria"
+                onClick={() => void selectDiagram(null)}
+              >
+                <Workflow size={16} />
+              </button>
+              <button
+                className="icon-btn"
+                title={diagram.inLibrary ? "Rimuovi dalla libreria" : "Salva in libreria"}
+                onClick={() => void toggleLibrary(diagram.id)}
+              >
+                {diagram.inLibrary ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
+              </button>
+              <button
+                className={`icon-btn ${diagram.favorite ? "star-on" : ""}`}
+                title="Preferito"
+                onClick={() => void toggleFavorite(diagram.id)}
+              >
+                <Star size={17} />
+              </button>
+              <button className="icon-btn" title="Rinomina" onClick={() => void rename()}>
+                <Pencil size={16} />
+              </button>
+              <button
+                className="icon-btn danger"
+                title="Elimina diagramma"
+                onClick={() => {
+                  if (dirty) {
+                    toast.warning("Salva o annulla le modifiche al diagramma prima di eliminarlo");
+                    return;
+                  }
+                  if (window.confirm(`Eliminare “${diagram.title}”?`)) {
+                    void deleteDiagram(diagram.id);
+                  }
+                }}
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                className="btn btn-ghost"
+                onClick={() => void saveCurrent()}
+                title="Salva una versione con il sorgente e la lavagna (Ctrl+S)"
+              >
+                <Save size={15} /> Salva versione
+              </button>
+              <details className="export-menu">
+                <summary className="icon-btn" title="Esporta la lavagna">
+                  <Download size={16} />
+                </summary>
+                <div className="export-popover" onClick={(event) => {
+                  (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                }}>
+                  <button disabled={exporting} onClick={() => void exportBoardPngFile(1, true)}>PNG 1x con sfondo</button>
+                  <button disabled={exporting} onClick={() => void exportBoardPngFile(2, true)}>PNG 2x con sfondo</button>
+                  <button disabled={exporting} onClick={() => void exportBoardPngFile(3, true)}>PNG 3x con sfondo</button>
+                  <button disabled={exporting} onClick={() => void exportBoardPngFile(1, false)}>PNG 1x trasparente</button>
+                  <button disabled={exporting} onClick={() => void exportBoardPngFile(2, false)}>PNG 2x trasparente</button>
+                  <button disabled={exporting} onClick={() => void exportBoardPngFile(3, false)}>PNG 3x trasparente</button>
+                  <button disabled={exporting} onClick={() => void exportBoardSvgFile(true)}>SVG con sfondo</button>
+                  <button disabled={exporting} onClick={() => void exportBoardSvgFile(false)}>SVG trasparente</button>
+                  <button disabled={exporting} onClick={() => void exportBoardScene()}>.excalidraw</button>
+                  <button onClick={() => void copyBoard("png")}><Copy size={13} /> Copia PNG</button>
+                  <button onClick={() => void copyBoard("svg")}><FileCode2 size={13} /> Copia SVG</button>
+                </div>
+              </details>
+              <details className="workspace-menu">
+                <summary className="icon-btn" title="Altre azioni">
+                  <MoreHorizontal size={17} />
+                </summary>
+                <div
+                  className="workspace-menu-popover"
+                  onClick={(event) => {
+                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute(
+                      "open",
+                    );
+                  }}
+                >
+                  <button onClick={() => void selectDiagram(null)}>
+                    <Workflow size={14} /> Torna alla galleria
+                  </button>
+                  <button onClick={() => void toggleLibrary(diagram.id)}>
+                    {diagram.inLibrary ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                    {diagram.inLibrary ? "Rimuovi dalla libreria" : "Salva in libreria"}
+                  </button>
+                  <button onClick={() => void toggleFavorite(diagram.id)}>
+                    <Star size={14} /> {diagram.favorite ? "Rimuovi preferito" : "Preferito"}
+                  </button>
+                  <button onClick={() => void rename()}>
+                    <Pencil size={14} /> Rinomina
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      if (window.confirm(`Eliminare “${diagram.title}” e la sua lavagna?`)) {
+                        void deleteDiagram(diagram.id);
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} /> Elimina diagramma
+                  </button>
+                </div>
+              </details>
+            </>
+          )}
         </div>
       </header>
 
+      {workspaceMode === "diagram" && (
       <div className="workspace-toolbar">
         <div className="toolbar-spacer" />
         <button
@@ -1013,6 +1455,114 @@ export function WorkspacePane() {
         </details>
       </div>
 
+      )}
+
+      {workspaceMode === "board" ? (
+        <div className="board-body">
+          {board && (
+            <BoardStatusBar
+              board={board}
+              source={source}
+              themeLabelText={themeLabel(theme)}
+              saveState={autosave.state}
+              lastSavedAt={autosave.lastSavedAt}
+              saveError={boardSaveError}
+              busy={boardBusy || converting}
+              onUpdate={() => void regenerateBoard(false)}
+              onSaveAndUpdate={() => void regenerateBoard(true)}
+              onRetrySave={() => void flushBoard()}
+              onOpenDiagram={() => void openDiagramFromBoard()}
+              onEditWithAi={() => void editBoardWithAi()}
+            />
+          )}
+          {conversionMeta && conversionMeta.quality !== "semantic" && (
+            <div className="board-quality-banner" role="status">
+              <AlertTriangle size={14} />
+              <span>{conversionQualityMessage(conversionMeta.quality, conversionMeta.type)}</span>
+              <button
+                className="btn btn-ghost tiny"
+                onClick={() => setConversionMeta(null)}
+              >
+                Chiudi
+              </button>
+            </div>
+          )}
+          {boardActionError && (
+            <div className="board-quality-banner" role="alert">
+              <AlertTriangle size={14} />
+              <span>{boardActionError}</span>
+              <button
+                className="btn btn-ghost tiny"
+                onClick={() => void regenerateBoard(false)}
+              >
+                Riprova
+              </button>
+              <button
+                className="btn btn-ghost tiny"
+                onClick={() => setBoardActionError("")}
+              >
+                Chiudi
+              </button>
+            </div>
+          )}
+          {boardLoading ? (
+            <div className="board-first-run">
+              <div className="empty-inline">
+                <Loader2 className="spin" size={20} /> Caricamento lavagna…
+              </div>
+            </div>
+          ) : boardError || boardSceneResult.error ? (
+            <div className="board-first-run">
+              <div className="render-error">
+                <AlertTriangle size={22} />
+                <h3>Lavagna non disponibile</h3>
+                <pre>{boardError || boardSceneResult.error}</pre>
+                <p className="muted">
+                  Il diagramma è intatto. Puoi riprovare, rigenerare la lavagna o
+                  crearne una vuota.
+                </p>
+                <div className="board-error-actions">
+                  <button className="btn btn-ghost" onClick={() => void loadBoard()}>
+                    <RefreshCw size={14} /> Riprova
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => void regenerateBoard(false)}
+                  >
+                    Rigenera dalla sorgente
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => void createBoard("manual")}
+                  >
+                    Lavagna vuota
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : board && boardSceneResult.scene ? (
+            <BoardCanvas
+              scene={boardSceneResult.scene}
+              sceneKey={String(boardEpoch)}
+              onSceneChange={autosave.notify}
+              onReady={(handle) => {
+                boardHandleRef.current = handle;
+              }}
+              onLinkOpen={(url) => void openBoardLink(url)}
+            />
+          ) : (
+            <BoardFirstRun
+              busy={converting}
+              error={conversionError}
+              onConvert={() => void createBoard("convert")}
+              onManual={() => void createBoard("manual")}
+              onImage={() => void createBoard("image")}
+              onRetry={() => void createBoard("convert")}
+              onOpenSource={openBoardSource}
+            />
+          )}
+        </div>
+      ) : (
       <div className="workspace-body" style={workspaceStyle}>
         <div className="workspace-stage-area">
           {renderError ? (
@@ -1161,7 +1711,12 @@ export function WorkspacePane() {
                     versions.map((version) => (
                       <div className="version-row" key={version.id}>
                         <div>
-                          <strong>v{version.versionNo}</strong>
+                          <strong>
+                            v{version.versionNo}
+                            {version.boardSnapshot && (
+                              <span className="version-board-badge">Lavagna</span>
+                            )}
+                          </strong>
                           <small>
                             {version.origin} · {date(version.createdAt)}
                           </small>
@@ -1170,7 +1725,13 @@ export function WorkspacePane() {
                           className="btn btn-ghost tiny"
                           title="Ripristina questa versione"
                           onClick={() => {
-                            if (window.confirm(`Ripristinare la versione v${version.versionNo}?`)) {
+                            if (
+                              window.confirm(
+                                version.boardSnapshot
+                                  ? `Ripristinare la versione v${version.versionNo}? Verranno ripristinati sorgente e lavagna.`
+                                  : `Ripristinare la versione v${version.versionNo}? La lavagna attuale resta e sarà marcata «Da aggiornare» se il sorgente cambia.`,
+                              )
+                            ) {
                               void restoreVersion(version.id);
                             }
                           }}
@@ -1210,6 +1771,7 @@ export function WorkspacePane() {
           </div>
         )}
       </div>
+      )}
 
       {diagram.conversationId === null && (
         <button className="back-to-chat" onClick={() => void selectDiagram(null)}>

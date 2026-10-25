@@ -503,9 +503,16 @@ pub fn diagram_save_version(
     id: String,
     source: String,
     title: Option<String>,
+    force: Option<bool>,
 ) -> Result<Diagram, String> {
     let mut conn = lock_db(&state)?;
-    db::save_diagram_version(&mut conn, &id, &source, title.as_deref())
+    db::save_diagram_version(
+        &mut conn,
+        &id,
+        &source,
+        title.as_deref(),
+        force.unwrap_or(false),
+    )
 }
 
 #[tauri::command]

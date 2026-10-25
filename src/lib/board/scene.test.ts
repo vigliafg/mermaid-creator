@@ -9,6 +9,7 @@ import {
   parseBoardScene,
   sceneFromParts,
   serializeBoardScene,
+  stampSceneTheme,
   withBoardTheme,
 } from "./scene";
 
@@ -72,6 +73,15 @@ describe("board scene", () => {
     expect(isBoardStale({ origin: "manual", baseSource: null }, "B")).toBe(
       false,
     );
+  });
+
+  it("reinietta il tema dopo serializeAsJSON", () => {
+    const json = serializeBoardScene(emptyBoardScene("light"));
+    const stamped = JSON.parse(stampSceneTheme(json, "dark")) as {
+      appState: { theme: string };
+    };
+    expect(stamped.appState.theme).toBe("dark");
+    expect(stampSceneTheme("non-json", "dark")).toBe("non-json");
   });
 
   it("cambia tema solo esplicitamente", () => {

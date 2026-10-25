@@ -18,8 +18,12 @@ Prima versione utilizzabile (0.1.0):
   direzione del layout per flowchart/class/state/ER,
   anteprima live del sorgente, versioni e ripristino; comandi AI per preset e
   palette; fascia verticale dei controlli a destra del diagramma, richiudibile;
+- **lavagna Excalidraw** per ogni diagramma: conversione nativa, primo avvio a
+  due scelte, autosave, versioni con snapshot della lavagna, export
+  PNG/SVG/.excalidraw, font self-hosted e funzionamento offline. Vedi
+  [`docs/board.md`](docs/board.md);
 - libreria con ricerca, preferiti ed export SVG/PNG/.mmd;
-- SQLite locale per conversazioni, diagrammi, versioni e allegati.
+- SQLite locale per conversazioni, diagrammi, lavagne, versioni e allegati.
 
 ## Requisiti
 
@@ -69,7 +73,8 @@ Dalla root del repository:
 ```
 
 Lo script carica l'ambiente Kingston, installa `node_modules` se manca e avvia
-`tauri dev`. In alternativa:
+`tauri dev`. `dev` e `build` copiano prima i font Excalidraw in
+`public/excalidraw-assets` (`npm run board:assets`). In alternativa:
 
 ```bash
 source scripts/env.sh
@@ -131,6 +136,14 @@ npm run test:render   # parità Pele/Mermaid, richiede Chrome (salta se assente)
 - L'editing strutturale visuale è limitato ai flowchart.
 - Il layout dei nodi è automatico: non si trascinano i nodi in posizioni
   libere.
+- La lavagna è una copia derivata: non c'è round-trip Excalidraw → Mermaid e i
+  suoi contenuti non vengono inviati all'AI.
+- La lavagna nasce sempre da un diagramma; non esistono documenti «solo
+  lavagna».
+- Il tema della lavagna è congelato alla creazione; per riallinearlo serve
+  «Aggiorna» dal sorgente. Vedi `docs/board.md`.
+- Il convertitore del fork è consumato da un tarball locale in questo checkout;
+  per la CI va pubblicato come asset di una GitHub Release.
 
 ## Struttura
 
@@ -138,5 +151,5 @@ npm run test:render   # parità Pele/Mermaid, richiede Chrome (salta se assente)
 src/                 React/TypeScript
 src-tauri/           backend Rust, SQLite, OpenRouter, keyring
 scripts/             ambiente Kingston e guard
-docs/                materiale di progetto
+docs/                materiale di progetto (board.md per la lavagna)
 ```

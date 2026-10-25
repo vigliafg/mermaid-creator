@@ -105,6 +105,7 @@ function UsageLine({ message }: { message: Message }) {
 function MessageBubble({ message }: { message: Message }) {
   const diagrams = useApp((s) => s.diagrams);
   const selectDiagram = useApp((s) => s.selectDiagram);
+  const openBoardFor = useApp((s) => s.openBoardFor);
   if (message.status === "streaming") return null;
   const isUser = message.role === "user";
   const messageDiagrams = diagrams.filter((diagram) => diagram.messageId === message.id);
@@ -157,20 +158,28 @@ function MessageBubble({ message }: { message: Message }) {
         {messageDiagrams.length > 0 && (
           <div className="diagram-cards">
             {messageDiagrams.map((diagram) => (
-              <button
-                className="diagram-card"
-                key={diagram.id}
-                onClick={() => void selectDiagram(diagram.id)}
-              >
-                <span className="diagram-card-icon">
-                  <Workflow size={17} />
-                </span>
-                <span className="diagram-card-copy">
-                  <strong>{diagram.title}</strong>
-                  <small>{diagram.diagramType}</small>
-                </span>
-                <span className="diagram-card-open">Apri</span>
-              </button>
+              <div className="diagram-card-wrap" key={diagram.id}>
+                <button
+                  className="diagram-card"
+                  onClick={() => void selectDiagram(diagram.id)}
+                >
+                  <span className="diagram-card-icon">
+                    <Workflow size={17} />
+                  </span>
+                  <span className="diagram-card-copy">
+                    <strong>{diagram.title}</strong>
+                    <small>{diagram.diagramType}</small>
+                  </span>
+                  <span className="diagram-card-open">Apri</span>
+                </button>
+                <button
+                  className="diagram-card-board"
+                  title="Apri la lavagna Excalidraw di questo diagramma"
+                  onClick={() => void openBoardFor(diagram.id)}
+                >
+                  Lavagna
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -209,6 +218,7 @@ export function ChatPane() {
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const chatFocusNonce = useApp((s) => s.chatFocusNonce);
   const endRef = useRef<HTMLDivElement>(null);
 
   const conversation = conversations.find((item) => item.id === activeConversationId);

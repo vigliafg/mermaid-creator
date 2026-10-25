@@ -123,6 +123,23 @@ export function serializeBoardScene(scene: BoardScene): string {
   return JSON.stringify(scene);
 }
 
+/**
+ * `serializeAsJSON` di Excalidraw non conserva `appState.theme`: lo
+ * reiniettiamo a ogni salvataggio per mantenere il tema congelato.
+ */
+export function stampSceneTheme(json: string, theme: BoardTheme): string {
+  try {
+    const value = JSON.parse(json) as Record<string, unknown>;
+    const appState = isRecord(value.appState) ? value.appState : {};
+    return JSON.stringify({
+      ...value,
+      appState: { ...appState, theme },
+    });
+  } catch {
+    return json;
+  }
+}
+
 export function boardByteSize(scene: BoardScene | string): number {
   return typeof scene === "string"
     ? new TextEncoder().encode(scene).length

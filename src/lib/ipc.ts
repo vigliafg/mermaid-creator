@@ -75,8 +75,18 @@ export const api = {
       targetDiagramId,
       items,
     }),
-  diagramSaveVersion: (id: string, source: string, title?: string) =>
-    invoke<Diagram>("diagram_save_version", { id, source, title: title ?? null }),
+  diagramSaveVersion: (
+    id: string,
+    source: string,
+    title?: string,
+    force = false,
+  ) =>
+    invoke<Diagram>("diagram_save_version", {
+      id,
+      source,
+      title: title ?? null,
+      force,
+    }),
   diagramRestore: (diagramId: string, versionId: string) =>
     invoke<Diagram>("diagram_restore", { diagramId, versionId }),
   diagramSetFlags: (

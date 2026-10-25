@@ -179,6 +179,18 @@ con versioni, ripristino ed export `.mmd`. Gli `style`, i `linkStyle` e i
 lo stile effettivamente renderizzato. Al primo edit di un elemento, lo stile
 efficace viene materializzato nel blocco, che essendo in coda vince.
 
+## Lavagna Excalidraw
+
+Lo switch **Diagramma | Lavagna** nella testata apre una seconda superficie per
+lo stesso diagramma. La lavagna è una copia derivata: le modifiche Excalidraw
+non tornano nel sorgente Mermaid. In modalità Lavagna la toolbar Mermaid e la
+fascia destra spariscono, le azioni secondarie passano nel menu `…` e le
+scorciatoie dell'app non intercettano l'editor (resta `Ctrl/Cmd + S` per salvare
+la versione).
+
+Primo avvio, autosave, stato «Da aggiornare», versioni con snapshot, export e
+limiti sono descritti in [`board.md`](board.md).
+
 ## Versioni, AI ed export
 
 - **Salva versione** crea una versione solo se il sorgente cambia.
@@ -199,6 +211,11 @@ efficace viene materializzato nel blocco, che essendo in coda vince.
   fogli di stile interni all'SVG.
 
 ## Limiti dichiarati
+
+- La lavagna non fa round-trip verso Mermaid e non è inviata all'AI.
+- La lavagna esiste solo dentro un diagramma; non ci sono documenti solo-lavagna.
+- Il tema della lavagna è congelato alla creazione: per riallinearlo serve
+  «Aggiorna da Mermaid».
 
 - Il layout è automatico di Mermaid: non si trascinano i nodi in posizioni
   libere, perché la posizione non è rappresentabile nel sorgente.

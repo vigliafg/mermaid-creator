@@ -780,6 +780,7 @@ pub fn save_diagram_version(
     id: &str,
     source: &str,
     title: Option<&str>,
+    force: bool,
 ) -> Result<Diagram, String> {
     let current = get_diagram(conn, id)?.ok_or_else(|| "Diagramma non trovato".to_string())?;
     let new_title = title
@@ -799,8 +800,9 @@ pub fn save_diagram_version(
         .map_err(|e| e.to_string())?
         .flatten();
     let board_scene = board.as_ref().map(|item| item.scene_json.as_str());
-    let changed =
-        current.source != source || board_scene.map(str::to_string) != last_snapshot;
+    let changed = force
+        || current.source != source
+        || board_scene.map(str::to_string) != last_snapshot;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "UPDATE diagrams SET title=?1, source=?2, updated_at=?3 WHERE id=?4",
@@ -1182,7 +1184,7 @@ mod tests {
         let mut conn = migrated();
         insert_diagram(&conn, "d1", None, false);
         create_board(&conn, "d1", &scene("a"), "manual", None).unwrap();
-        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None, false).unwrap();
 
         delete_diagram(&mut conn, "d1").unwrap();
         assert!(get_board(&conn, "d1").unwrap().is_none());
@@ -1211,18 +1213,18 @@ mod tests {
         insert_diagram(&conn, "d1", None, false);
         create_board(&conn, "d1", &scene("a"), "diagram", Some("flowchart LR\n A-->B")).unwrap();
 
-        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None, false).unwrap();
         assert_eq!(versions(&conn, "d1").len(), 1);
 
         // Stesso sorgente, scena diversa: nuova versione con snapshot.
         save_board_scene(&conn, "d1", &scene("b")).unwrap();
-        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None, false).unwrap();
         let list = versions(&conn, "d1");
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].board_snapshot.as_deref(), Some(scene("b").as_str()));
 
         // Nessun cambiamento: non si crea una terza versione.
-        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None).unwrap();
+        save_diagram_version(&mut conn, "d1", "flowchart LR\n A-->B", None, false).unwrap();
         assert_eq!(versions(&conn, "d1").len(), 2);
     }
 
@@ -1237,7 +1239,7 @@ mod tests {
         )
         .unwrap();
         create_board(&conn, "d1", &scene("saved"), "diagram", Some(base)).unwrap();
-        save_diagram_version(&mut conn, "d1", base, None).unwrap();
+        save_diagram_version(&mut conn, "d1", base, None, false).unwrap();
         let version_id = versions(&conn, "d1")[0].id.clone();
 
         // L'utente modifica entrambi i lati.

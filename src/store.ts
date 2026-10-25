@@ -16,6 +16,7 @@ import type {
   ChatEvent,
   Conversation,
   Diagram,
+  DiagramBoard,
   DiagramInput,
   DiagramVersion,
   KeyStatus,
@@ -25,6 +26,7 @@ import type {
 } from "./types";
 
 type View = "chat" | "library" | "settings";
+export type WorkspaceMode = "diagram" | "board";
 
 function titleFromText(text: string): string {
   const clean = text.replace(/\s+/g, " ").trim();
@@ -54,6 +56,13 @@ interface AppStore {
   targetDiagramId: string | null;
   diagramDirty: boolean;
   viewerExpanded: boolean;
+  workspaceMode: WorkspaceMode;
+  board: DiagramBoard | null;
+  boardLoading: boolean;
+  boardEpoch: number;
+  boardError: string;
+  boardSaveError: string | null;
+  boardFlush: (() => Promise<boolean>) | null;
   versions: DiagramVersion[];
   pendingAttachments: PendingAttachment[];
   streaming: boolean;
@@ -77,9 +86,18 @@ interface AppStore {
   setTarget: (id: string | null) => void;
   setDiagramDirty: (dirty: boolean) => void;
   toggleViewerExpanded: () => void;
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
+  loadBoard: () => Promise<void>;
+  replaceBoard: (board: DiagramBoard | null) => void;
+  setBoardSaveError: (message: string | null) => void;
+  registerBoardFlush: (flush: (() => Promise<boolean>) | null) => void;
+  flushBoard: () => Promise<boolean>;
+  openBoardFor: (id: string) => Promise<void>;
+  focusChat: (diagramId: string | null) => void;
+  chatFocusNonce: number;
   setDiagramTheme: (id: string, theme: DiagramTheme) => Promise<void>;
   clearDiagramThemes: (ids: string[]) => Promise<void>;
-  saveDiagram: (source: string, title?: string) => Promise<boolean>;
+  saveDiagram: (source: string, title?: string, force?: boolean) => Promise<boolean>;
   restoreVersion: (versionId: string) => Promise<void>;
   toggleLibrary: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
@@ -91,6 +109,15 @@ interface AppStore {
   setModel: (modelId: string) => Promise<void>;
   setSetting: (key: string, value: string) => Promise<void>;
   refreshAppInfo: () => Promise<void>;
+}
+
+async function flushBeforeLeaving(get: () => AppStore): Promise<boolean> {
+  if (!get().boardFlush) return true;
+  const ok = await get().flushBoard();
+  if (!ok) {
+    toast.error("Lavagna non salvata: resta aperta per non perdere il lavoro");
+  }
+  return ok;
 }
 
 export const useApp = create<AppStore>((set, get) => ({
@@ -110,6 +137,14 @@ export const useApp = create<AppStore>((set, get) => ({
   targetDiagramId: null,
   diagramDirty: false,
   viewerExpanded: false,
+  workspaceMode: "diagram",
+  board: null,
+  boardLoading: false,
+  boardEpoch: 0,
+  boardError: "",
+  boardSaveError: null,
+  boardFlush: null,
+  chatFocusNonce: 0,
   versions: [],
   pendingAttachments: [],
   streaming: false,
@@ -177,6 +212,7 @@ export const useApp = create<AppStore>((set, get) => ({
       toast.warning("Salva o annulla le modifiche al diagramma prima di aprire una nuova chat");
       return;
     }
+    if (!(await flushBeforeLeaving(get))) return;
     const modelId = get().settings.model_id || get().models[0]?.id || "";
     try {
       const conversation = await api.conversationCreate(
@@ -194,6 +230,8 @@ export const useApp = create<AppStore>((set, get) => ({
         diagrams: [],
         selectedDiagramId: null,
         targetDiagramId: null,
+        workspaceMode: "diagram",
+        board: null,
         versions: [],
         streamText: "",
         pendingAttachments: [],
@@ -220,11 +258,14 @@ export const useApp = create<AppStore>((set, get) => ({
       toast.warning("Salva o annulla le modifiche al diagramma prima di cambiare conversazione");
       return;
     }
+    if (get().activeConversationId !== id && !(await flushBeforeLeaving(get))) return;
     set({
       activeConversationId: id,
       view: "chat",
       streamText: "",
       targetDiagramId: null,
+      workspaceMode: "diagram",
+      board: null,
     });
     try {
       const [messages, diagrams] = await Promise.all([
@@ -249,6 +290,13 @@ export const useApp = create<AppStore>((set, get) => ({
   deleteConversation: async (id) => {
     if (get().diagramDirty && get().activeConversationId === id) {
       toast.warning("Salva o annulla le modifiche al diagramma prima di eliminare la conversazione");
+      return;
+    }
+    if (
+      get().activeConversationId === id &&
+      get().workspaceMode === "board" &&
+      !(await flushBeforeLeaving(get))
+    ) {
       return;
     }
     const removedThemeIds = get()
@@ -279,6 +327,7 @@ export const useApp = create<AppStore>((set, get) => ({
       toast.error("Configura una API key OpenRouter nelle impostazioni");
       return;
     }
+    if (get().workspaceMode === "board" && !(await flushBeforeLeaving(get))) return;
     const modelId = get().settings.model_id;
     if (!modelId) {
       toast.error("Seleziona un modello nelle impostazioni");
@@ -322,6 +371,7 @@ export const useApp = create<AppStore>((set, get) => ({
         streamText: "",
         requestId,
         view: "chat",
+        workspaceMode: "diagram",
       });
 
       const handleEvent = (event: ChatEvent) => {
@@ -540,7 +590,17 @@ export const useApp = create<AppStore>((set, get) => ({
       toast.warning("Salva o annulla le modifiche al diagramma prima di cambiare");
       return;
     }
-    set({ selectedDiagramId: id, targetDiagramId: id, versions: [] });
+    if (get().workspaceMode === "board" && !(await flushBeforeLeaving(get))) {
+      return;
+    }
+    set({
+      selectedDiagramId: id,
+      targetDiagramId: id,
+      versions: [],
+      workspaceMode: "diagram",
+      board: null,
+      boardError: "",
+    });
     if (!id) return;
     try {
       const versions = await api.diagramVersions(id);
@@ -555,6 +615,67 @@ export const useApp = create<AppStore>((set, get) => ({
   setDiagramDirty: (dirty) => set({ diagramDirty: dirty }),
 
   toggleViewerExpanded: () => set((state) => ({ viewerExpanded: !state.viewerExpanded })),
+
+  setWorkspaceMode: (mode) => set({ workspaceMode: mode }),
+
+  replaceBoard: (board) =>
+    set((state) => ({ board, boardEpoch: state.boardEpoch + 1 })),
+
+  setBoardSaveError: (message) => set({ boardSaveError: message }),
+
+  registerBoardFlush: (flush) => set({ boardFlush: flush }),
+
+  flushBoard: async () => {
+    const flush = get().boardFlush;
+    if (!flush) return true;
+    try {
+      return await flush();
+    } catch (error) {
+      toast.error(`Salvataggio lavagna: ${errorText(error)}`);
+      return false;
+    }
+  },
+
+  openBoardFor: async (id) => {
+    if (get().workspaceMode === "board" && get().selectedDiagramId === id) return;
+    if (get().diagramDirty) {
+      toast.warning("Salva o annulla le modifiche al diagramma prima di aprire la lavagna");
+      return;
+    }
+    await get().selectDiagram(id);
+    if (get().selectedDiagramId !== id) return;
+    set((state) => ({ workspaceMode: "board", boardEpoch: state.boardEpoch + 1 }));
+    await get().loadBoard();
+  },
+
+  focusChat: (diagramId) =>
+    set((state) => ({
+      view: "chat",
+      targetDiagramId: diagramId,
+      workspaceMode: "diagram",
+      chatFocusNonce: state.chatFocusNonce + 1,
+    })),
+
+  loadBoard: async () => {
+    const id = get().selectedDiagramId;
+    if (!id) {
+      set({ board: null, boardLoading: false, boardError: "" });
+      return;
+    }
+    set({ boardLoading: true, boardError: "" });
+    try {
+      const board = await api.boardGet(id);
+      if (get().selectedDiagramId !== id) return;
+      set((state) => ({
+        board,
+        boardLoading: false,
+        boardSaveError: null,
+        boardEpoch: state.boardEpoch + 1,
+      }));
+    } catch (error) {
+      set({ boardLoading: false, boardError: errorText(error) });
+    }
+  },
 
   setDiagramTheme: async (id, theme) => {
     const current = parseThemeMap(get().settings.diagram_themes);
@@ -576,18 +697,25 @@ export const useApp = create<AppStore>((set, get) => ({
     if (changed) await get().setSetting("diagram_themes", JSON.stringify(current));
   },
 
-  saveDiagram: async (source, title) => {
+  saveDiagram: async (source, title, force = false) => {
     const id = get().selectedDiagramId;
     if (!id) return false;
+    if (!(await get().flushBoard())) {
+      toast.error("Lavagna non salvata: versione non creata");
+      return false;
+    }
     try {
-      const diagram = await api.diagramSaveVersion(id, source, title);
+      const diagram = await api.diagramSaveVersion(id, source, title, force);
       set((state) => ({
         diagrams: state.diagrams.map((item) => (item.id === diagram.id ? diagram : item)),
         library: state.library.map((item) => (item.id === diagram.id ? diagram : item)),
       }));
       const versions = await api.diagramVersions(id);
+      const created = versions.length > get().versions.length;
       set({ versions, diagramDirty: false });
-      toast.success("Versione salvata");
+      toast.success(
+        created ? "Versione salvata" : "Nessuna modifica da salvare",
+      );
       return true;
     } catch (error) {
       toast.error(`Salvataggio versione: ${errorText(error)}`);
@@ -609,7 +737,8 @@ export const useApp = create<AppStore>((set, get) => ({
         library: state.library.map((item) => (item.id === diagram.id ? diagram : item)),
       }));
       const versions = await api.diagramVersions(id);
-      set({ versions, diagramDirty: false });
+      set({ versions, diagramDirty: false, boardError: "" });
+      await get().loadBoard();
       toast.success("Versione ripristinata");
     } catch (error) {
       toast.error(`Ripristino: ${errorText(error)}`);
@@ -652,6 +781,10 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   deleteDiagram: async (id) => {
+    if (get().workspaceMode === "board" && get().selectedDiagramId === id) {
+      if (!(await flushBeforeLeaving(get))) return;
+      set({ workspaceMode: "diagram", board: null });
+    }
     try {
       await api.diagramDelete(id);
       await get().clearDiagramThemes([id]);
@@ -662,6 +795,9 @@ export const useApp = create<AppStore>((set, get) => ({
           state.selectedDiagramId === id ? null : state.selectedDiagramId,
         targetDiagramId:
           state.targetDiagramId === id ? null : state.targetDiagramId,
+        workspaceMode:
+          state.selectedDiagramId === id ? "diagram" : state.workspaceMode,
+        board: state.selectedDiagramId === id ? null : state.board,
       }));
       toast.success("Diagramma eliminato");
     } catch (error) {
