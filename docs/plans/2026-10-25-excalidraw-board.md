@@ -1,6 +1,6 @@
 # Lavagna Excalidraw e convertitore Mermaid-to-Excalidraw — Piano di integrazione
 
-> **Stato**: piano approvato con modifiche dai critici; branch e baseline preparati. Pronto per l'esecuzione in una sessione build pulita. Nessun codice è stato modificato.
+> **Stato**: implementato sul branch `feat/excalidraw-board` (app) e `feat/board-api` (fork). Gate 1a superato in WebKitGTK reale: canvas, font locali, disegno, `onChange`, `updateScene`, export PNG/SVG e clipboard con gesto utente funzionano; la CSP di produzione blocca le richieste remote. Deviazioni motivate rispetto al piano: tarball del fork versionato in `vendor/` invece che su GitHub Release (la Release è preparata, serve l'autorizzazione al push); i colori di default del fork vengono riallineati ai token del tema perché `themeVariables` non raggiunge gli elementi semantici; l'interfaccia dell'editor resta chiara perché Excalidraw inverte i colori della scena in tema scuro. Dettagli in `docs/board.md`.
 >
 > **Piano canonico**: `/home/vigliafg/.opencode/plan/2026-10-25-excalidraw-board.md`.
 >
