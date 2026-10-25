@@ -6,7 +6,7 @@ describe("catalogo diagrammi", () => {
   it("ha varianti e sorgenti univoche", () => {
     const ids = new Set<string>();
     for (const entry of DIAGRAM_CATALOG) {
-      expect(entry.variants.length, entry.id).toBeGreaterThanOrEqual(2);
+      expect(entry.variants.length, entry.id).toBe(10);
       expect(ids.has(entry.id), entry.id).toBe(false);
       ids.add(entry.id);
       const variantIds = new Set<string>();

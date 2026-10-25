@@ -1,3 +1,4 @@
+import { EXTRA_VARIANTS } from "./catalogVariants";
 import type { DiagramKind } from "./document";
 
 export type DiagramCategory =
@@ -35,7 +36,7 @@ export const DIAGRAM_CATEGORIES: DiagramCategory[] = [
   "Decisioni",
 ];
 
-export const DIAGRAM_CATALOG: DiagramCatalogEntry[] = [
+const BASE_CATALOG: DiagramCatalogEntry[] = [
   {
     id: "flowchart",
     name: "Flowchart",
@@ -609,6 +610,15 @@ export const DIAGRAM_CATALOG: DiagramCatalogEntry[] = [
     ],
   },
 ];
+
+/**
+ * I dodici tipi storici, ognuno con dieci varianti: tre di catalogo e sette
+ * aggiuntive. La galleria mostra le varianti in una fascia laterale alla card.
+ */
+export const DIAGRAM_CATALOG: DiagramCatalogEntry[] = BASE_CATALOG.map((entry) => ({
+  ...entry,
+  variants: [...entry.variants, ...(EXTRA_VARIANTS[entry.id] ?? [])],
+}));
 
 export function catalogEntry(id: string): DiagramCatalogEntry | undefined {
   return DIAGRAM_CATALOG.find((entry) => entry.id === id);

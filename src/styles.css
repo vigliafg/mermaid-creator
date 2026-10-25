@@ -2914,9 +2914,11 @@ input[type="color"] {
   overflow: auto;
   padding: 14px 18px 18px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(225px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
   align-content: start;
+  grid-auto-rows: max-content;
+  align-items: start;
 }
 .catalog-card {
   display: flex;
@@ -2936,11 +2938,105 @@ input[type="color"] {
   transform: translateY(-1px);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
 }
+.catalog-card-stage {
+  display: flex;
+  flex: none;
+  height: 210px;
+  min-height: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+.catalog-card-preview {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: zoom-in;
+}
+.catalog-card-preview .catalog-preview {
+  height: 100%;
+  border-bottom: 0;
+}
 .catalog-card-body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  width: 100%;
   padding: 10px 12px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.catalog-card-body:hover {
+  background: color-mix(in srgb, var(--panel-2) 70%, transparent);
+}
+.catalog-card-active {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.catalog-variant-rail {
+  flex: none;
+  width: 106px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  border-left: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--panel-2) 62%, transparent);
+  scrollbar-width: thin;
+}
+
+.catalog-variant-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.15;
+  text-align: left;
+  cursor: pointer;
+}
+
+.catalog-variant-pill:hover {
+  background: var(--panel-3);
+  color: var(--text-soft);
+}
+
+.catalog-variant-pill.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.catalog-variant-index {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+.catalog-variant-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .catalog-card-meta {
   display: flex;
@@ -2963,7 +3059,8 @@ input[type="color"] {
 }
 
 .catalog-preview {
-  height: 126px;
+  position: relative;
+  height: 210px;
   flex: none;
   display: grid;
   place-items: center;
@@ -2978,16 +3075,17 @@ input[type="color"] {
   border-radius: 10px;
 }
 .catalog-svg {
-  width: 100%;
-  height: 100%;
-  padding: 10px;
-  box-sizing: border-box;
+  position: absolute;
+  inset: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+/* Autofit reale: preserva le proporzioni e lascia respirare il diagramma
+   dentro la card, senza schiacciarlo né tagliarlo. */
 .catalog-svg svg {
   width: 100% !important;
   height: 100% !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
   display: block;
 }
 .catalog-preview-error {
@@ -3017,22 +3115,31 @@ input[type="color"] {
 }
 .catalog-variants {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 370px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 .catalog-variant {
   flex: none;
-  width: 185px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 1px 4px;
   text-align: left;
   border: 1px solid var(--border-soft);
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  padding: 8px 10px;
+  padding: 6px 8px;
+}
+.catalog-variant .catalog-variant-index {
+  grid-row: span 2;
+  padding-top: 1px;
+}
+.catalog-variant strong,
+.catalog-variant span:not(.catalog-variant-index) {
+  min-width: 0;
 }
 .catalog-variant strong {
   color: var(--text);
@@ -3052,7 +3159,7 @@ input[type="color"] {
 
 .catalog-detail-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.9fr);
+  grid-template-columns: 190px minmax(0, 1.6fr) minmax(210px, 0.9fr);
   gap: 16px;
   align-items: start;
 }
@@ -3098,6 +3205,9 @@ input[type="color"] {
   }
   .catalog-detail-body {
     grid-template-columns: 1fr;
+  }
+  .catalog-variants {
+    max-height: 260px;
   }
   .catalog-preview.large {
     height: 280px;

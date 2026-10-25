@@ -98,6 +98,78 @@ function DiagramPreview({
   );
 }
 
+function CatalogCard({
+  entry,
+  mode,
+  onOpen,
+}: {
+  entry: DiagramCatalogEntry;
+  mode: ThemeMode;
+  onOpen: (entry: DiagramCatalogEntry, variantId: string) => void;
+}) {
+  const [activeId, setActiveId] = useState(entry.variants[0]?.id ?? "");
+  const active =
+    entry.variants.find((item) => item.id === activeId) ?? entry.variants[0];
+
+  if (!active) return null;
+
+  return (
+    <article className="catalog-card">
+      <div className="catalog-card-stage">
+        <button
+          type="button"
+          className="catalog-card-preview"
+          onClick={() => onOpen(entry, active.id)}
+          title={`Apri ${entry.name}: ${active.name}`}
+        >
+          <DiagramPreview
+            source={active.source}
+            mode={mode}
+            label={`Anteprima ${entry.name}: ${active.name}`}
+          />
+        </button>
+        <div
+          className="catalog-variant-rail"
+          role="tablist"
+          aria-label={`Varianti di ${entry.name}`}
+        >
+          {entry.variants.map((item, index) => (
+            <button
+              type="button"
+              role="tab"
+              key={item.id}
+              aria-selected={item.id === active.id}
+              className={`catalog-variant-pill ${item.id === active.id ? "active" : ""}`}
+              title={item.description}
+              onClick={() => setActiveId(item.id)}
+            >
+              <span className="catalog-variant-index">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="catalog-variant-name">{item.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="catalog-card-body"
+        onClick={() => onOpen(entry, active.id)}
+      >
+        <span className="catalog-card-meta">
+          <span className="badge">{entry.category}</span>
+          <span className="catalog-variant-count">{entry.variants.length} varianti</span>
+        </span>
+        <strong>{entry.name}</strong>
+        <span className="catalog-card-description">{entry.description}</span>
+        <span className="catalog-card-active">
+          {active.name} · {active.description}
+        </span>
+      </button>
+    </article>
+  );
+}
+
 function capabilityBadges(entry: DiagramCatalogEntry): string[] {
   const capabilities = capabilitiesFor(entry.kind);
   const badges: string[] = [];
@@ -172,9 +244,9 @@ export function DiagramCatalog({ open, onClose, onUsePrompt }: Props) {
     });
   }, [category, query]);
 
-  const openEntry = (entry: DiagramCatalogEntry) => {
+  const openEntry = (entry: DiagramCatalogEntry, initialVariantId?: string) => {
     setSelectedId(entry.id);
-    setVariantId(entry.variants[0]?.id ?? "");
+    setVariantId(initialVariantId ?? entry.variants[0]?.id ?? "");
   };
 
   const useVariant = () => {
@@ -238,20 +310,28 @@ export function DiagramCatalog({ open, onClose, onUsePrompt }: Props) {
               ))}
             </div>
 
-            <div className="catalog-variants">
-              {selected.variants.map((item) => (
-                <button
-                  key={item.id}
-                  className={`catalog-variant ${item.id === variant.id ? "active" : ""}`}
-                  onClick={() => setVariantId(item.id)}
-                >
-                  <strong>{item.name}</strong>
-                  <span>{item.description}</span>
-                </button>
-              ))}
-            </div>
-
             <div className="catalog-detail-body">
+              <div
+                className="catalog-variants"
+                role="tablist"
+                aria-label={`Varianti di ${selected.name}`}
+              >
+                {selected.variants.map((item, index) => (
+                  <button
+                    key={item.id}
+                    role="tab"
+                    aria-selected={item.id === variant.id}
+                    className={`catalog-variant ${item.id === variant.id ? "active" : ""}`}
+                    onClick={() => setVariantId(item.id)}
+                  >
+                    <span className="catalog-variant-index">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <strong>{item.name}</strong>
+                    <span>{item.description}</span>
+                  </button>
+                ))}
+              </div>
               <DiagramPreview
                 source={variant.source}
                 mode={mode}
@@ -309,27 +389,12 @@ export function DiagramCatalog({ open, onClose, onUsePrompt }: Props) {
             ) : (
               <div className="catalog-grid">
                 {filtered.map((entry) => (
-                  <button
+                  <CatalogCard
                     key={entry.id}
-                    className="catalog-card"
-                    onClick={() => openEntry(entry)}
-                  >
-                    <DiagramPreview
-                      source={entry.variants[0].source}
-                      mode={mode}
-                      label={`Anteprima ${entry.name}`}
-                    />
-                    <span className="catalog-card-body">
-                      <span className="catalog-card-meta">
-                        <span className="badge">{entry.category}</span>
-                        <span className="catalog-variant-count">
-                          {entry.variants.length} varianti
-                        </span>
-                      </span>
-                      <strong>{entry.name}</strong>
-                      <span className="catalog-card-description">{entry.description}</span>
-                    </span>
-                  </button>
+                    entry={entry}
+                    mode={mode}
+                    onOpen={openEntry}
+                  />
                 ))}
               </div>
             )}

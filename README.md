@@ -22,6 +22,8 @@ Prima versione utilizzabile (0.1.0):
   due scelte, autosave, versioni con snapshot della lavagna, export
   PNG/SVG/.excalidraw, font self-hosted e funzionamento offline. Vedi
   [`docs/board.md`](docs/board.md);
+- catalogo con 12 tipi di diagramma e 10 varianti per tipo, anteprime
+  autofit e fascia laterale delle varianti dentro ogni card;
 - libreria con ricerca, preferiti ed export SVG/PNG/.mmd;
 - SQLite locale per conversazioni, diagrammi, lavagne, versioni e allegati.
 
