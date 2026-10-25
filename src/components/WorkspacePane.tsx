@@ -29,6 +29,7 @@ import {
   Undo2,
   Redo2,
   Maximize2,
+  MessageSquare,
   MoreHorizontal,
   PenTool,
   Workflow,
@@ -247,7 +248,6 @@ export function WorkspacePane() {
   const [connectArrow, setConnectArrow] = useState("-->");
   const [tool, setTool] = useState<"select" | "pan">("select");
   const [reveal, setReveal] = useState<{ from: number; to: number; line: number } | null>(null);
-  const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [converting, setConverting] = useState(false);
   const [conversionError, setConversionError] = useState("");
@@ -666,10 +666,6 @@ export function WorkspacePane() {
     } finally {
       setBoardBusy(false);
     }
-  };
-
-  const openDiagramFromBoard = async () => {
-    await switchToDiagram();
   };
 
   const editBoardWithAi = async () => {
@@ -1167,61 +1163,132 @@ export function WorkspacePane() {
           {workspaceMode === "diagram" ? (
             <>
               <button
-                className="icon-btn"
-                title="Torna alla galleria"
-                onClick={() => void selectDiagram(null)}
+                className={`icon-btn ${dirty ? "dirty-save" : ""}`}
+                onClick={() => void saveCurrent()}
+                title={
+                  dirty
+                    ? "Salva versione (modifiche non salvate, Ctrl+S)"
+                    : "Salva versione (Ctrl+S)"
+                }
               >
-                <Workflow size={16} />
+                <Save size={16} />
               </button>
-              <button
-                className="icon-btn"
-                title={diagram.inLibrary ? "Rimuovi dalla libreria" : "Salva in libreria"}
-                onClick={() => void toggleLibrary(diagram.id)}
-              >
-                {diagram.inLibrary ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}
-              </button>
-              <button
-                className={`icon-btn ${diagram.favorite ? "star-on" : ""}`}
-                title="Preferito"
-                onClick={() => void toggleFavorite(diagram.id)}
-              >
-                <Star size={17} />
-              </button>
-              <button className="icon-btn" title="Rinomina" onClick={() => void rename()}>
-                <Pencil size={16} />
-              </button>
-              <button
-                className="icon-btn danger"
-                title="Elimina diagramma"
-                onClick={() => {
-                  if (dirty) {
-                    toast.warning("Salva o annulla le modifiche al diagramma prima di eliminarlo");
-                    return;
-                  }
-                  if (window.confirm(`Eliminare “${diagram.title}”?`)) {
-                    void deleteDiagram(diagram.id);
-                  }
-                }}
-              >
-                <Trash2 size={16} />
-              </button>
+              <details className="export-menu">
+                <summary className="icon-btn" title="Esporta il diagramma">
+                  <Download size={16} />
+                </summary>
+                <div
+                  className="export-popover"
+                  onClick={(event) => {
+                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute(
+                      "open",
+                    );
+                  }}
+                >
+                  <button onClick={() => void exportSvg(true)} disabled={exporting}>
+                    SVG con sfondo
+                  </button>
+                  <button onClick={() => void exportSvg(false)} disabled={exporting}>
+                    SVG trasparente
+                  </button>
+                  <button onClick={() => void exportPng(1)} disabled={exporting}>
+                    PNG 1x
+                  </button>
+                  <button onClick={() => void exportPng(2)} disabled={exporting}>
+                    PNG 2x
+                  </button>
+                  <button onClick={() => void exportPng(3)} disabled={exporting}>
+                    PNG 3x
+                  </button>
+                  <button onClick={() => void exportMmd()}>Sorgente .mmd</button>
+                  <button onClick={() => void copySvg()}>
+                    <Copy size={13} /> Copia SVG
+                  </button>
+                  <button onClick={() => void copyMmd()}>
+                    <FileCode2 size={13} /> Copia sorgente
+                  </button>
+                </div>
+              </details>
+              <details className="workspace-menu">
+                <summary className="icon-btn" title="Altre azioni">
+                  <MoreHorizontal size={17} />
+                </summary>
+                <div
+                  className="workspace-menu-popover"
+                  onClick={(event) => {
+                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute(
+                      "open",
+                    );
+                  }}
+                >
+                  <button onClick={() => void selectDiagram(null)}>
+                    <Workflow size={14} /> Torna alla galleria
+                  </button>
+                  <button onClick={() => void toggleLibrary(diagram.id)}>
+                    {diagram.inLibrary ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                    {diagram.inLibrary ? "Rimuovi dalla libreria" : "Salva in libreria"}
+                  </button>
+                  <button onClick={() => void toggleFavorite(diagram.id)}>
+                    <Star size={14} /> {diagram.favorite ? "Rimuovi preferito" : "Preferito"}
+                  </button>
+                  <button onClick={() => void rename()}>
+                    <Pencil size={14} /> Rinomina
+                  </button>
+                  {dirty && (
+                    <button
+                      onClick={() => {
+                        if (!window.confirm("Annullare le modifiche non salvate?")) return;
+                        sourceRef.current = savedSource;
+                        setSource(savedSource);
+                        setSelections([]);
+                        setLabelEdit(null);
+                        setConnectMode(false);
+                        setConnectFrom(null);
+                        setPast([]);
+                        setFuture([]);
+                      }}
+                    >
+                      <RotateCcw size={14} /> Annulla modifiche
+                    </button>
+                  )}
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      if (dirty) {
+                        toast.warning("Salva o annulla le modifiche al diagramma prima di eliminarlo");
+                        return;
+                      }
+                      if (window.confirm(`Eliminare “${diagram.title}”?`)) {
+                        void deleteDiagram(diagram.id);
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} /> Elimina diagramma
+                  </button>
+                </div>
+              </details>
             </>
           ) : (
             <>
               <button
-                className="btn btn-ghost"
+                className="icon-btn"
                 onClick={() => void saveCurrent()}
                 title="Salva una versione con il sorgente e la lavagna (Ctrl+S)"
               >
-                <Save size={15} /> Salva versione
+                <Save size={16} />
               </button>
               <details className="export-menu">
                 <summary className="icon-btn" title="Esporta la lavagna">
                   <Download size={16} />
                 </summary>
-                <div className="export-popover" onClick={(event) => {
-                  (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                }}>
+                <div
+                  className="export-popover"
+                  onClick={(event) => {
+                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute(
+                      "open",
+                    );
+                  }}
+                >
                   <button disabled={exporting} onClick={() => void exportBoardPngFile(1, true)}>PNG 1x con sfondo</button>
                   <button disabled={exporting} onClick={() => void exportBoardPngFile(2, true)}>PNG 2x con sfondo</button>
                   <button disabled={exporting} onClick={() => void exportBoardPngFile(3, true)}>PNG 3x con sfondo</button>
@@ -1260,6 +1327,9 @@ export function WorkspacePane() {
                   <button onClick={() => void rename()}>
                     <Pencil size={14} /> Rinomina
                   </button>
+                  <button onClick={() => void editBoardWithAi()}>
+                    <MessageSquare size={14} /> Modifica con l'AI
+                  </button>
                   <button
                     className="danger"
                     onClick={() => {
@@ -1279,7 +1349,6 @@ export function WorkspacePane() {
 
       {workspaceMode === "diagram" && (
       <div className="workspace-toolbar">
-        <div className="toolbar-spacer" />
         <button
           className={`icon-btn ${tool === "select" ? "active" : ""}`}
           title="Seleziona oggetti (V)"
@@ -1343,18 +1412,20 @@ export function WorkspacePane() {
             >
               <Link2 size={16} />
             </button>
-            <select
-              className="toolbar-select"
-              value={connectArrow}
-              onChange={(event) => setConnectArrow(event.target.value)}
-              title="Tipo di freccia per la connessione"
-            >
-              {ARROW_OPTIONS.map((arrow) => (
-                <option key={arrow.id} value={arrow.value}>
-                  {arrow.label}
-                </option>
-              ))}
-            </select>
+            {connectMode && (
+              <select
+                className="toolbar-select"
+                value={connectArrow}
+                onChange={(event) => setConnectArrow(event.target.value)}
+                title="Tipo di freccia per la connessione"
+              >
+                {ARROW_OPTIONS.map((arrow) => (
+                  <option key={arrow.id} value={arrow.value}>
+                    {arrow.label}
+                  </option>
+                ))}
+              </select>
+            )}
           </>
         )}
         {doc.capabilities.direction && (
@@ -1386,73 +1457,6 @@ export function WorkspacePane() {
             <Trash2 size={16} />
           </button>
         )}
-        <span className="toolbar-divider" />
-        {dirty && (
-          <button
-            className="icon-btn"
-            title="Annulla modifiche non salvate"
-            onClick={() => {
-              if (!window.confirm("Annullare le modifiche non salvate?")) return;
-              sourceRef.current = savedSource;
-              setSource(savedSource);
-              setSelections([]);
-              setLabelEdit(null);
-              setConnectMode(false);
-              setConnectFrom(null);
-              setPast([]);
-              setFuture([]);
-            }}
-          >
-            <RotateCcw size={16} />
-          </button>
-        )}
-        <button
-          className={`btn btn-ghost ${dirty ? "dirty" : ""}`}
-          onClick={() => void saveCurrent()}
-          title="Salva versione (Ctrl+S)"
-        >
-          <Save size={15} /> {dirty ? "Salva*" : "Salvato"}
-        </button>
-        <details
-          className="export-menu"
-          open={exportOpen}
-          onToggle={(event) => setExportOpen((event.target as HTMLDetailsElement).open)}
-        >
-          <summary className="icon-btn" title="Esporta">
-            <Download size={16} />
-          </summary>
-          <div
-            className="export-popover"
-            onClick={(event) => {
-              (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute(
-                "open",
-              );
-            }}
-          >
-            <button onClick={() => void exportSvg(true)} disabled={exporting}>
-              SVG con sfondo
-            </button>
-            <button onClick={() => void exportSvg(false)} disabled={exporting}>
-              SVG trasparente
-            </button>
-            <button onClick={() => void exportPng(1)} disabled={exporting}>
-              PNG 1x
-            </button>
-            <button onClick={() => void exportPng(2)} disabled={exporting}>
-              PNG 2x
-            </button>
-            <button onClick={() => void exportPng(3)} disabled={exporting}>
-              PNG 3x
-            </button>
-            <button onClick={() => void exportMmd()}>Sorgente .mmd</button>
-            <button onClick={() => void copySvg()}>
-              <Copy size={13} /> Copia SVG
-            </button>
-            <button onClick={() => void copyMmd()}>
-              <FileCode2 size={13} /> Copia sorgente
-            </button>
-          </div>
-        </details>
       </div>
 
       )}
@@ -1463,7 +1467,6 @@ export function WorkspacePane() {
             <BoardStatusBar
               board={board}
               source={source}
-              themeLabelText={themeLabel(theme)}
               saveState={autosave.state}
               lastSavedAt={autosave.lastSavedAt}
               saveError={boardSaveError}
@@ -1471,8 +1474,6 @@ export function WorkspacePane() {
               onUpdate={() => void regenerateBoard(false)}
               onSaveAndUpdate={() => void regenerateBoard(true)}
               onRetrySave={() => void flushBoard()}
-              onOpenDiagram={() => void openDiagramFromBoard()}
-              onEditWithAi={() => void editBoardWithAi()}
             />
           )}
           {conversionMeta && conversionMeta.quality !== "semantic" && (

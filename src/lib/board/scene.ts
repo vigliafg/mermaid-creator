@@ -169,7 +169,7 @@ export function isBoardStale(
 }
 
 export function boardOriginLabel(origin: BoardOrigin): string {
-  return origin === "diagram" ? "Generata dal diagramma" : "Lavagna libera";
+  return origin === "diagram" ? "Dal diagramma" : "Lavagna libera";
 }
 
 export function boardTheme(scene: BoardScene): BoardTheme {

@@ -1,10 +1,8 @@
 import {
   AlertTriangle,
-  ArrowLeftRight,
   Check,
   CloudOff,
   Loader2,
-  MessageSquare,
   RefreshCw,
   Sparkles,
 } from "lucide-react";
@@ -15,7 +13,6 @@ import { boardOriginLabel, isBoardStale } from "../../lib/board/scene";
 interface BoardStatusBarProps {
   board: DiagramBoard;
   source: string;
-  themeLabelText: string;
   saveState: BoardSaveState;
   lastSavedAt: number | null;
   saveError: string | null;
@@ -23,8 +20,6 @@ interface BoardStatusBarProps {
   onUpdate: () => void;
   onSaveAndUpdate: () => void;
   onRetrySave: () => void;
-  onOpenDiagram: () => void;
-  onEditWithAi: () => void;
 }
 
 function savedTime(value: number | null): string {
@@ -38,7 +33,6 @@ function savedTime(value: number | null): string {
 export function BoardStatusBar({
   board,
   source,
-  themeLabelText,
   saveState,
   lastSavedAt,
   saveError,
@@ -46,8 +40,6 @@ export function BoardStatusBar({
   onUpdate,
   onSaveAndUpdate,
   onRetrySave,
-  onOpenDiagram,
-  onEditWithAi,
 }: BoardStatusBarProps) {
   const stale = isBoardStale(board, source);
   const saveText =
@@ -65,7 +57,6 @@ export function BoardStatusBar({
     <div className={`board-status ${stale ? "is-stale" : ""}`}>
       <div className="board-status-main">
         <span className="board-origin">{boardOriginLabel(board.origin)}</span>
-        <span className="board-theme">{themeLabelText}</span>
         {stale && (
           <span className="board-stale-badge">
             <AlertTriangle size={12} /> Da aggiornare
@@ -89,33 +80,31 @@ export function BoardStatusBar({
 
       <div className="board-status-actions">
         {stale && (
-          <>
-            <span className="board-stale-copy">
-              Il sorgente Mermaid è cambiato. Aggiornare sostituisce il disegno;
-              salva prima una versione se vuoi poterlo ripristinare.
-            </span>
-            <button
-              className="btn btn-ghost tiny"
-              onClick={onSaveAndUpdate}
-              disabled={busy}
-              title="Salva una versione della lavagna e poi rigenerala"
-            >
-              <Sparkles size={13} /> Salva e aggiorna
-            </button>
-          </>
+          <button
+            className="btn btn-ghost tiny"
+            onClick={onSaveAndUpdate}
+            disabled={busy}
+            title="Il sorgente è cambiato: salva una versione della lavagna e poi rigenerala"
+          >
+            <Sparkles size={13} /> Salva e aggiorna
+          </button>
         )}
         <button
           className="btn btn-ghost tiny"
           onClick={onUpdate}
           disabled={busy}
-          title="Rigenera la lavagna dal sorgente Mermaid"
+          title={
+            stale
+              ? "Il sorgente è cambiato: rigenera la lavagna (senza salvare prima una versione)"
+              : "Rigenera la lavagna dal sorgente Mermaid"
+          }
+          aria-label={stale ? "Aggiorna la lavagna" : "Rigenera la lavagna"}
         >
           {busy ? (
             <Loader2 size={13} className="spin" />
           ) : (
             <RefreshCw size={13} />
           )}
-          {stale ? "Aggiorna" : "Rigenera"}
         </button>
         {saveState === "error" && (
           <button
@@ -126,20 +115,6 @@ export function BoardStatusBar({
             Riprova salvataggio
           </button>
         )}
-        <button
-          className="btn btn-ghost tiny"
-          onClick={onOpenDiagram}
-          title="Torna al diagramma Mermaid"
-        >
-          <ArrowLeftRight size={13} /> Apri diagramma
-        </button>
-        <button
-          className="btn btn-ghost tiny"
-          onClick={onEditWithAi}
-          title="Torna al diagramma e prepara la chat senza inviare nulla"
-        >
-          <MessageSquare size={13} /> Modifica con l'AI
-        </button>
       </div>
     </div>
   );

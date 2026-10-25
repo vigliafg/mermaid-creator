@@ -124,13 +124,55 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 6px;
+  padding: 3px 10px;
   border-bottom: 1px solid var(--border-soft);
   background: color-mix(in srgb, var(--panel) 55%, var(--bg-soft));
-  font-size: 11px;
-  min-height: 38px;
-  flex-wrap: wrap;
+  font-size: 10px;
+  min-height: 30px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.board-status .btn {
+  padding: 3px 6px;
+  font-size: 10px;
+  gap: 4px;
+}
+
+.board-status-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.board-status-main,
+.board-status-actions {
+  flex-wrap: nowrap;
+}
+
+.board-status-main > * {
+  flex: none;
+}
+
+.board-status-actions {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.board-status-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.board-origin,
+.board-save {
+  white-space: nowrap;
+}
+
+.board-stale-badge {
+  white-space: nowrap;
 }
 
 .board-status.is-stale {
@@ -387,36 +429,76 @@
   align-items: center;
 }
 
-/* L'header del workspace resta su due righe: titolo/azioni, poi lo switch.
-   Così lo switch non si sovrappone alle azioni nella corsia stretta. */
+/* Una sola riga: titolo, switch e azioni. La fascia resta bassa e lascia
+   spazio al canvas; il titolo si tronca quando la corsia è stretta. */
 .workspace-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "heading actions"
-    "switch switch";
-  align-items: start;
-  gap: 8px 12px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "heading switch actions";
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 10px 5px;
 }
 
 .workspace-header .workspace-heading {
   grid-area: heading;
   min-width: 0;
+  align-items: flex-start;
 }
 
 .workspace-header .workspace-actions {
   grid-area: actions;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  gap: 0;
 }
 
 .workspace-header-center {
   grid-area: switch;
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 .workspace-header.is-board {
-  align-items: start;
+  align-items: center;
+}
+
+.workspace-title {
+  min-width: 0;
+}
+
+.workspace-title h2 {
+  max-width: 100%;
+  margin: 1px 0 0;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.workspace-title .eyebrow {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 8.5px;
+}
+
+.workspace-header .btn {
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  gap: 5px;
+}
+
+.icon-btn.dirty-save {
+  color: var(--amber);
+}
+
+.workspace-switch {
+  padding: 2px;
+}
+
+.workspace-switch button {
+  padding: 4px 8px;
+  font-size: 10px;
 }
 
 
