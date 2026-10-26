@@ -125,6 +125,14 @@ Se l'utente chiede solo un consiglio, non generare codice: dai la lista e chiedi
 Tipo giusto? Relazioni importanti rappresentate? Etichette brevi? Limiti rispettati? Dati inventati? Citazioni solo su fonti lette?
 ````
 
+> **Nota di implementazione (2026-10-26)**: il testo in produzione in
+> `src-tauri/src/prompts.rs` parte da questa base concordata e aggiunge, dopo
+> l'eval e i test di sintassi, alcune regole operative: priorità della vista
+> principale, sequence/gantt, `xychart-beta`, `quadrantChart`, anno corrente
+> per gantt/timeline e coerenza tra vista con priorità 1 e diagramma
+> principale. L'impianto e le sezioni del Concilio restano gli stessi; il
+> testo non è byte-per-byte identico a questo blocco.
+
 ## Prompt del planner (testo definitivo)
 
 ```text

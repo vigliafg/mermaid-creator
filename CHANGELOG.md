@@ -27,6 +27,17 @@
 
 ### Libreria Excalidraw e librerie della comunità
 
+- La libreria personale ha un pannello dell'app dedicato
+  (`BoardLibraryDialog`): salvataggio della selezione, inserimento, rinomina,
+  eliminazione, svuotamento, import `.excalidrawlib` e accesso al catalogo
+  della comunità. L'icona nativa di Excalidraw, il pulsante **Libreria** nella
+  testata e la voce **Apri libreria** nel menu `…` aprono questo pannello.
+- Il pannello funziona anche con il viewer espanso, perché è un overlay
+  indipendente dalla sidebar nativa. La rail «Chat» usa `key` stabili per non
+  rimontare `workspace-core`/Excalidraw durante l'espansione.
+- Le anteprime della libreria personale sono renderizzate su canvas e
+  adattate alla card con `object-fit: contain`: non vengono più tagliate
+  dalla fascia con nome e azioni.
 - La finestra **Library** dell'editor è attiva: salvataggio degli elementi
   selezionati, inserimento nella lavagna, rinomina, eliminazione e reset.
 - Gli elementi della libreria sono **globali** e persistono in SQLite tra

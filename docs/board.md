@@ -92,6 +92,16 @@ sempre dal dialogo Tauri dell'app.
 
 ## Libreria Excalidraw e librerie della comunità
 
+- L'icona libreria di Excalidraw, il pulsante **Libreria** nella testata e la
+  voce **Apri libreria** nel menu `…` aprono il pannello dell'app
+  (`BoardLibraryDialog`), non la sidebar nativa di Excalidraw. È un overlay
+  indipendente dal layout dell'editor, quindi funziona anche con il viewer
+  espanso.
+- Dal pannello si possono salvare gli elementi selezionati, inserirli nella
+  lavagna, rinominarli, eliminarli, svuotare la libreria, importare un file
+  `.excalidrawlib` e passare al catalogo delle librerie della comunità.
+- La rail «Chat» usa `key` stabili su `workspace-core`: espandere il viewer non
+  rimonta Excalidraw e non perde scena, undo o selezione.
 - La libreria è **globale** (non per lavagna) e vive in SQLite nella tabella
   `excalidraw_library` a riga singola. L'adapter di `useHandleLibrary` carica
   gli elementi all'apertura della lavagna e salva ogni modifica.

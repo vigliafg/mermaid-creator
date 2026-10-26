@@ -12,6 +12,7 @@ import {
   FileCode2,
   Hand,
   History,
+  Library,
   Link2,
   Loader2,
   MousePointer2,
@@ -701,6 +702,17 @@ export function WorkspacePane() {
     return ok;
   };
 
+  /** Apre il pannello libreria dell'app, indipendente dalla sidebar di
+   *  Excalidraw e quindi utilizzabile anche con il viewer espanso. */
+  const openBoardLibrary = () => {
+    const handle = boardHandleRef.current;
+    if (!handle?.api || handle.api.isDestroyed) {
+      toast.error("La lavagna non è ancora pronta");
+      return;
+    }
+    handle.openLibrary();
+  };
+
   const revealSelection = () => {
     const selection = selections[0];
     if (!selection) return;
@@ -1100,8 +1112,10 @@ export function WorkspacePane() {
   if (!diagram) {
     return (
       <aside className={`workspace-pane ${viewerExpanded ? "is-expanded" : ""}`}>
-        {viewerExpanded && <RestoreRail onRestore={toggleViewerExpanded} />}
-        <div className="workspace-core">
+        {viewerExpanded && (
+          <RestoreRail key="viewer-restore-rail" onRestore={toggleViewerExpanded} />
+        )}
+        <div key="workspace-core" className="workspace-core">
           <DiagramGallery onOpen={(id) => void selectDiagram(id)} />
         </div>
       </aside>
@@ -1110,8 +1124,10 @@ export function WorkspacePane() {
 
   return (
     <aside className={`workspace-pane ${viewerExpanded ? "is-expanded" : ""}`}>
-      {viewerExpanded && <RestoreRail onRestore={toggleViewerExpanded} />}
-      <div className="workspace-core">
+      {viewerExpanded && (
+        <RestoreRail key="viewer-restore-rail" onRestore={toggleViewerExpanded} />
+      )}
+      <div key="workspace-core" className="workspace-core">
       <header className={`workspace-header ${workspaceMode === "board" ? "is-board" : ""}`}>
         <div className="workspace-heading">
           {!viewerExpanded && (
@@ -1272,6 +1288,13 @@ export function WorkspacePane() {
             <>
               <button
                 className="icon-btn"
+                onClick={openBoardLibrary}
+                title="Apri la libreria Excalidraw"
+              >
+                <Library size={16} />
+              </button>
+              <button
+                className="icon-btn"
                 onClick={() => void saveCurrent()}
                 title="Salva una versione con il sorgente e la lavagna (Ctrl+S)"
               >
@@ -1316,6 +1339,9 @@ export function WorkspacePane() {
                 >
                   <button onClick={() => void selectDiagram(null)}>
                     <Workflow size={14} /> Torna alla galleria
+                  </button>
+                  <button onClick={openBoardLibrary}>
+                    <Library size={14} /> Apri libreria
                   </button>
                   <button onClick={() => void toggleLibrary(diagram.id)}>
                     {diagram.inLibrary ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
@@ -1547,6 +1573,9 @@ export function WorkspacePane() {
               sceneKey={String(boardEpoch)}
               onSceneChange={autosave.notify}
               onReady={(handle) => {
+                // Excalidraw richiama onExcalidrawAPI(null) allo smontaggio:
+                // non deve cancellare l'API di un editor ancora vivo.
+                if (!handle.api) return;
                 boardHandleRef.current = handle;
               }}
               onLinkOpen={(url) => void openBoardLink(url)}

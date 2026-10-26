@@ -12,6 +12,7 @@ import {
   loadBoardLibraryItems,
   saveBoardLibraryItems,
 } from "../../lib/board/libraryStore";
+import { BoardLibraryDialog } from "./BoardLibraryDialog";
 import { CommunityLibraryDialog } from "./CommunityLibraryDialog";
 
 type ExcalidrawModule = typeof import("@excalidraw/excalidraw");
@@ -45,6 +46,7 @@ export interface BoardCanvasHandle {
   api: ExcalidrawImperativeAPI | null;
   module: ExcalidrawModule | null;
   scrollToContent: () => void;
+  openLibrary: () => void;
 }
 
 interface BoardCanvasProps {
@@ -68,7 +70,9 @@ export function BoardCanvas({
   const hostRef = useRef<HTMLDivElement>(null);
   const [module, setModule] = useState<ExcalidrawModule | null>(null);
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
+  const [boardLibraryOpen, setBoardLibraryOpen] = useState(false);
   const [communityLibrariesOpen, setCommunityLibrariesOpen] = useState(false);
+  const [returnToBoardLibrary, setReturnToBoardLibrary] = useState(false);
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const signatureRef = useRef<string>("");
   const appliedKeyRef = useRef<string>("");
@@ -114,19 +118,30 @@ export function BoardCanvas({
     };
   }, []);
 
-  // Excalidraw disegna il link «Sfoglia librerie» con target dedicato: nella
-  // webview Tauri aprirebbe una finestra vuota. Lo intercettiamo e mostriamo
-  // il catalogo integrato, che scarica solo dal dominio ufficiale.
+  // La sidebar nativa di Excalidraw non è affidabile con il viewer espanso.
+  // Intercettiamo l'icona libreria e apriamo il pannello dell'app, che usa la
+  // stessa persistenza ma non dipende dal layout interno di Excalidraw.
   useEffect(() => {
     if (!module) return;
     const onClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target as Element | null;
+      const trigger = target?.closest?.(".sidebar-trigger__label-element");
+      if (trigger?.querySelector?.('input[aria-label="Libreria"]')) {
+        event.preventDefault();
+        event.stopPropagation();
+        setBoardLibraryOpen(true);
+        return;
+      }
+      // Excalidraw disegna il link «Sfoglia librerie» con target dedicato:
+      // nella webview Tauri aprirebbe una finestra vuota. Mostriamo il
+      // catalogo integrato, che scarica solo dal dominio ufficiale.
       const link = target?.closest?.(
         "a.library-menu-browse-button, a[href*='libraries.excalidraw.com']",
       );
       if (!link) return;
       event.preventDefault();
       event.stopPropagation();
+      setReturnToBoardLibrary(false);
       if (apiRef.current) setCommunityLibrariesOpen(true);
     };
     document.addEventListener("click", onClick, true);
@@ -238,6 +253,7 @@ export function BoardCanvas({
                   fitToContent: true,
                 });
               },
+              openLibrary: () => setBoardLibraryOpen(true),
             });
           }}
           onChange={(elements, appState, files) => {
@@ -261,10 +277,27 @@ export function BoardCanvas({
           }}
         />
       </div>
+      <BoardLibraryDialog
+        open={boardLibraryOpen}
+        api={api}
+        module={module}
+        onClose={() => setBoardLibraryOpen(false)}
+        onBrowseLibraries={() => {
+          setReturnToBoardLibrary(true);
+          setBoardLibraryOpen(false);
+          setCommunityLibrariesOpen(true);
+        }}
+      />
       <CommunityLibraryDialog
         open={communityLibrariesOpen}
         api={api}
-        onClose={() => setCommunityLibrariesOpen(false)}
+        onClose={() => {
+          setCommunityLibrariesOpen(false);
+          if (returnToBoardLibrary) {
+            setReturnToBoardLibrary(false);
+            setBoardLibraryOpen(true);
+          }
+        }}
       />
     </>
   );
