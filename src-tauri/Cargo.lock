@@ -2385,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "mermaid-creator"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "base64 0.22.1",
  "dirs 6.0.0",

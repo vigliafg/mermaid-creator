@@ -2,7 +2,7 @@
 
 Desktop app per creare diagrammi Mermaid con l'AI, organizzarli in un workspace affiancato alla chat e conservarne le versioni.
 
-Versione **0.20.0** — vedi [`CHANGELOG.md`](CHANGELOG.md):
+Versione **0.21.0** — vedi [`CHANGELOG.md`](CHANGELOG.md):
 
 - chat con streaming via OpenRouter;
 - scelta del modello dal catalogo OpenRouter, con ricerca, filtri vision/gratis e preferiti locali, anche durante l'onboarding iniziale (default: `openai/gpt-4o-mini` se disponibile);
@@ -93,7 +93,7 @@ La prima compilazione Rust può richiedere 15-25 minuti. Le successive sono incr
 
 ## Release
 
-La versione `0.20.0` è taggata `v0.20.0`. Il workflow
+La versione `0.21.0` è taggata `v0.21.0`. Il workflow
 `.github/workflows/release.yml` produce e pubblica:
 
 - Linux: `.deb`, `.rpm`, `.AppImage`
