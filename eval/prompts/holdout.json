@@ -1,0 +1,138 @@
+[
+  {
+    "id": "hold-flow-return",
+    "title": "Rimborso di un reso",
+    "source": "holdout realistico",
+    "text": "Il cliente richiede il reso di un prodotto entro 30 giorni. Il sistema verifica se il prodotto è integro e se rientra nella policy: se sì approva il reso e genera l'etichetta; se no rifiuta la richiesta e spiega il motivo. Dopo la ricezione del pacco il magazzino controlla il prodotto; se il controllo passa, il sistema autorizza il rimborso e notifica il cliente, altrimenti apre una contestazione.",
+    "expectedTypes": ["flowchart"],
+    "expectedTopType": "flowchart",
+    "mustMention": ["reso", "rimborso", "magazzino"]
+  },
+  {
+    "id": "hold-flow-podcast",
+    "title": "Pubblicazione podcast",
+    "source": "holdout realistico",
+    "text": "Il team registra la puntata, la monta e carica il file. Il revisore ascolta la versione e decide se approvarla. Se approva, il sistema genera il feed e pubblica sulle piattaforme; se chiede modifiche, la puntata torna al montaggio. Dopo la pubblicazione il sistema verifica che le piattaforme abbiano ricevuto il file: se una piattaforma fallisce, riprova e segnala l'errore.",
+    "expectedTypes": ["flowchart"],
+    "expectedTopType": "flowchart",
+    "mustMention": ["puntata", "revisore", "pubblicazione"]
+  },
+  {
+    "id": "hold-seq-hotel",
+    "title": "Prenotazione hotel",
+    "source": "holdout realistico",
+    "text": "Il cliente cerca disponibilità per una camera e invia la richiesta al servizio prenotazioni. Il servizio interroga il gestionale dell'hotel, che risponde con camere e tariffe. Il cliente sceglie la tariffa e invia i dati di pagamento; il servizio chiama il provider di pagamento e attende l'autorizzazione. Se il pagamento è autorizzato il servizio conferma la prenotazione e invia l'email al cliente, altrimenti libera la camera.",
+    "expectedTypes": ["sequence"],
+    "expectedTopType": "sequence",
+    "mustMention": ["cliente", "pagamento", "conferma"]
+  },
+  {
+    "id": "hold-class-social",
+    "title": "Modello social",
+    "source": "holdout realistico",
+    "text": "Il dominio social è progettato con le classi Utente, Post, Commento e Like. Utente ha nickname, email e i metodi pubblica() e commenta(). Post ha testo, data e un autore; contiene più Commenti e riceve Like. Commento ha testo e autore ed è collegato a un Post. Like associa un Utente a un Post. Le relazioni usano associazione e composizione.",
+    "expectedTypes": ["class"],
+    "expectedTopType": "class",
+    "mustMention": ["classi", "Commento", "composizione"]
+  },
+  {
+    "id": "hold-er-vet",
+    "title": "Schema clinica veterinaria",
+    "source": "holdout realistico",
+    "text": "Il database della clinica veterinaria contiene proprietari, animali, visite e trattamenti. Un proprietario può avere più animali; ogni animale appartiene a un proprietario. Un animale può ricevere più visite e ogni visita è associata a un veterinario. Una visita può generare più trattamenti, ognuno con farmaco e dosaggio. Le chiavi primarie identificano proprietario, animale, visita e trattamento.",
+    "expectedTypes": ["er"],
+    "expectedTopType": "er",
+    "mustMention": ["database", "chiavi", "trattamento"]
+  },
+  {
+    "id": "hold-state-invoice",
+    "title": "Ciclo di vita della fattura",
+    "source": "holdout realistico",
+    "text": "Una fattura nasce come bozza. Quando viene emessa passa a inviata. Se il pagamento arriva entro la scadenza diventa pagata; se non arriva passa a scaduta. Una fattura scaduta può essere sollecitata o contestata. Una contestazione può chiudersi con pagamento o con annullamento. Una fattura pagata può essere archiviata; una fattura annullata non può tornare pagata.",
+    "expectedTypes": ["state"],
+    "expectedTopType": "state",
+    "mustMention": ["bozza", "inviata", "contestazione"]
+  },
+  {
+    "id": "hold-state-ml",
+    "title": "Ciclo di vita di un modello ML",
+    "source": "holdout realistico",
+    "text": "Un modello di machine learning viene registrato come candidato. Durante il training passa a in addestramento; al termine diventa addestrato. Se la validazione supera le soglie viene approvato, altrimenti torna in addestramento o viene archiviato. Un modello approvato viene distribuito in produzione. In produzione può essere monitorato, sospeso per deriva e poi riaddestrato o ritirato.",
+    "expectedTypes": ["state"],
+    "expectedTopType": "state",
+    "mustMention": ["training", "validazione", "produzione"]
+  },
+  {
+    "id": "hold-gantt-office",
+    "title": "Trasloco ufficio",
+    "source": "holdout realistico",
+    "text": "Il trasloco dell'ufficio prevede l'inventario e l'etichettatura dal 1 al 5 giugno, l'imballaggio dal 6 al 10 giugno e il trasporto l'11 giugno. L'allestimento della nuova sede va dal 12 al 16 giugno e la configurazione della rete dal 17 al 19 giugno. I test degli impianti si svolgono il 20 e 21 giugno. Il rientro operativo è previsto il 22 giugno.",
+    "expectedTypes": ["gantt", "timeline"],
+    "expectedTopType": "gantt",
+    "mustMention": ["imballaggio", "trasporto", "allestimento"],
+    "mustNotMention": ["2024", "2025"]
+  },
+  {
+    "id": "hold-pie-waste",
+    "title": "Ripartizione dei rifiuti",
+    "source": "holdout realistico",
+    "text": "La raccolta differenziata mensile è ripartita così: organico 38%, carta 24%, plastica 18%, vetro 12%, metalli 5%, altro 3%. L'organico è la frazione più grande. Carta e plastica insieme rappresentano il 42%. Il totale è 100%; i dati sono espressi in percentuale sul peso.",
+    "expectedTypes": ["pie"],
+    "expectedTopType": "pie",
+    "mustMention": ["organico", "carta", "plastica"]
+  },
+  {
+    "id": "hold-mind-cyber",
+    "title": "Aree di cybersecurity",
+    "source": "holdout realistico",
+    "text": "La cybersecurity si organizza in una gerarchia di cinque aree: governance, prevenzione, rilevamento, risposta e recupero. Governance contiene policy, ruoli e formazione. Prevenzione contiene hardening, patch e segmentazione. Rilevamento contiene logging, monitoraggio e alert. Risposta contiene triage, contenimento e comunicazione. Recupero contiene backup, ripristino e lezioni apprese.",
+    "expectedTypes": ["mindmap"],
+    "expectedTopType": "mindmap",
+    "mustMention": ["gerarchia", "prevenzione", "recupero"]
+  },
+  {
+    "id": "hold-time-internet",
+    "title": "Tappe di Internet",
+    "source": "holdout realistico",
+    "text": "La cronologia di Internet parte nel 1969 con ARPANET. Nel 1983 viene adottato TCP/IP. Nel 1991 nasce il World Wide Web. Nel 1998 viene fondato Google. Nel 2007 arriva l'iPhone. Nel 2012 il cloud pubblico diventa mainstream. Nel 2020 il 5G si diffonde. Nel 2026 i modelli generativi sono parte dell'infrastruttura.",
+    "expectedTypes": ["timeline"],
+    "expectedTopType": "timeline",
+    "mustMention": ["1969", "1991", "2007"]
+  },
+  {
+    "id": "hold-journey-gym",
+    "title": "Esperienza in palestra",
+    "source": "holdout realistico",
+    "text": "Il potenziale cliente scopre la palestra online, prenota una prova e visita la struttura. Alla reception riceve il tour e prova una lezione. Se gli piace si iscrive, scarica l'app e prenota la prima lezione. Nei primi trenta giorni riceve promemoria e supporto. Il punteggio di soddisfazione è alto alla prova, cala se la reception è lenta e risale dopo la prima lezione.",
+    "expectedTypes": ["journey"],
+    "expectedTopType": "journey",
+    "mustMention": ["prova", "iscrizione", "soddisfazione"]
+  },
+  {
+    "id": "hold-quad-bugs",
+    "title": "Priorità dei bug",
+    "source": "holdout realistico",
+    "text": "I bug sono valutati per impatto e frequenza. Il crash al checkout ha impatto alto e frequenza media. Il testo troncato nella home ha impatto basso e frequenza alta. Il timeout raro del report ha impatto alto e frequenza bassa. Il colore sbagliato del pulsante ha impatto basso e frequenza bassa. I bug ad alto impatto vanno corretti prima, anche se non sono i più frequenti.",
+    "expectedTypes": ["quadrant"],
+    "expectedTopType": "quadrant",
+    "mustMention": ["impatto", "frequenza", "checkout"]
+  },
+  {
+    "id": "hold-xy-mau",
+    "title": "Utenti attivi mensili",
+    "source": "holdout realistico",
+    "text": "Gli utenti attivi mensili sono 24.000 a gennaio, 26.500 a febbraio, 25.800 a marzo, 29.000 ad aprile, 31.500 a maggio e 34.000 a giugno. Gli utenti paganti sono 3.200, 3.500, 3.400, 4.000, 4.400 e 4.800. Il rapporto paganti/attivi cresce dal 13,3% al 14,1%. Il picco di utenti attivi è a giugno.",
+    "expectedTypes": ["xychart"],
+    "expectedTopType": "xychart",
+    "mustMention": ["24000", "34000", "giugno"]
+  },
+  {
+    "id": "hold-xy-energy",
+    "title": "Consumo energia settimanale",
+    "source": "holdout realistico",
+    "text": "Il consumo energetico giornaliero dello stabilimento è 420, 435, 410, 460, 480, 455 e 430 kWh da lunedì a domenica. Il picco è venerdì, il minimo mercoledì. La produzione è 120, 125, 118, 132, 138, 130 e 124 unità. Il consumo per unità è più alto lunedì e più basso venerdì.",
+    "expectedTypes": ["xychart"],
+    "expectedTopType": "xychart",
+    "mustMention": ["420", "480", "venerdì"]
+  }
+]

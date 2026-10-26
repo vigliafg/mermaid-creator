@@ -5,7 +5,10 @@ Desktop app per creare diagrammi Mermaid con l'AI, organizzarli in un workspace 
 Versione **0.20.0** — vedi [`CHANGELOG.md`](CHANGELOG.md):
 
 - chat con streaming via OpenRouter;
-- scelta del modello dal catalogo OpenRouter, con ricerca, filtri vision/gratis e preferiti locali;
+- scelta del modello dal catalogo OpenRouter, con ricerca, filtri vision/gratis e preferiti locali, anche durante l'onboarding iniziale (default: `openai/gpt-4o-mini` se disponibile);
+- prompt Mermaid v4 con analisi di testi/dati, viste consigliate e grounding gratuito su Wikipedia, Wikidata, OpenAlex, Bing RSS e URL diretti (vedi [`docs/ai-grounding.md`](docs/ai-grounding.md));
+- validazione e auto-correzione Mermaid, feedback sulle viste e harness di valutazione del prompt su 60 testi reali + 15 holdout indipendenti (gpt-4o-mini di riferimento);
+- prompt compatto opzionale per modelli free o con contesto ridotto.
 - API key validata e salvata nel keyring di sistema;
 - allegati: testo, PDF testuale, DOCX, immagini, clipboard e drag&drop;
 - estrazione automatica dei blocchi Mermaid dalle risposte;
@@ -20,12 +23,14 @@ Versione **0.20.0** — vedi [`CHANGELOG.md`](CHANGELOG.md):
   palette; fascia verticale dei controlli a destra del diagramma, richiudibile;
 - **lavagna Excalidraw** per ogni diagramma: conversione nativa, primo avvio a
   due scelte, autosave, versioni con snapshot della lavagna, export
-  PNG/SVG/.excalidraw, font self-hosted e funzionamento offline. Vedi
-  [`docs/board.md`](docs/board.md);
+  PNG/SVG/.excalidraw, font self-hosted e funzionamento offline. La libreria
+  Excalidraw è persistente e integra il catalogo delle librerie della comunità.
+  Vedi [`docs/board.md`](docs/board.md);
 - catalogo con 12 tipi di diagramma e 10 varianti per tipo, anteprime
   autofit e fascia laterale delle varianti dentro ogni card;
 - libreria con ricerca, preferiti ed export SVG/PNG/.mmd;
-- SQLite locale per conversazioni, diagrammi, lavagne, versioni e allegati.
+- SQLite locale per conversazioni, diagrammi, lavagne, libreria Excalidraw,
+  versioni e allegati.
 
 ## Requisiti
 

@@ -207,6 +207,7 @@ pub struct StreamFailure {
     pub message: String,
     pub partial: String,
     pub cancelled: bool,
+    pub usage: Option<ChatUsage>,
 }
 
 impl StreamFailure {
@@ -215,8 +216,116 @@ impl StreamFailure {
             message: message.into(),
             partial: partial.into(),
             cancelled,
+            usage: None,
         }
     }
+
+    fn with_usage(mut self, usage: Option<ChatUsage>) -> Self {
+        self.usage = usage;
+        self
+    }
+}
+
+/// Chiamata non-streaming usata dal planner. Accetta una cancellazione e un
+/// timeout, e restituisce il JSON contenuto nella risposta.
+pub async fn complete_json(
+    client: &reqwest::Client,
+    key: &str,
+    model: &str,
+    messages: Vec<Value>,
+    max_tokens: u32,
+    cancel: &CancellationToken,
+) -> Result<(Value, Option<ChatUsage>), String> {
+    let (content, usage) = complete_text(client, key, model, messages, max_tokens, cancel).await?;
+    Ok((parse_json_content(&content)?, usage))
+}
+
+/// Chiamata non-streaming generica. Usata dal planner e dal correttore Mermaid.
+pub async fn complete_text(
+    client: &reqwest::Client,
+    key: &str,
+    model: &str,
+    messages: Vec<Value>,
+    max_tokens: u32,
+    cancel: &CancellationToken,
+) -> Result<(String, Option<ChatUsage>), String> {
+    let body = json!({
+        "model": model,
+        "messages": messages,
+        "stream": false,
+        "temperature": 0,
+        "max_tokens": max_tokens
+    });
+    let request = client
+        .post(format!("{}/chat/completions", base_url()))
+        .bearer_auth(key)
+        .header("Content-Type", "application/json")
+        .header("HTTP-Referer", "https://localhost/mermaid-creator")
+        .header("X-OpenRouter-Title", "Mermaid Creator")
+        .json(&body)
+        .send();
+    let response = tokio::select! {
+        _ = cancel.cancelled() => return Err("Pianificazione annullata".into()),
+        result = tokio::time::timeout(Duration::from_secs(30), request) => {
+            result
+                .map_err(|_| "Timeout della chiamata (30s).".to_string())?
+                .map_err(|e| format!("Connessione a OpenRouter fallita: {e}"))?
+        }
+    };
+    let status = response.status();
+    let retry_after = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let body = tokio::select! {
+        _ = cancel.cancelled() => return Err("Pianificazione annullata".into()),
+        result = tokio::time::timeout(Duration::from_secs(30), response.text()) => {
+            result
+                .map_err(|_| "Timeout della chiamata (30s).".to_string())?
+                .map_err(|e| format!("Lettura risposta fallita: {e}"))?
+        }
+    };
+    if !status.is_success() {
+        return Err(http_error(status, &body, retry_after.as_deref()));
+    }
+    let value: Value =
+        serde_json::from_str(&body).map_err(|e| format!("Risposta non valida: {e}"))?;
+    let usage = value.get("usage").and_then(parse_usage);
+    let message = value
+        .get("choices")
+        .and_then(|value| value.as_array())
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .ok_or_else(|| "Il modello non ha restituito un messaggio.".to_string())?;
+    let content = message
+        .get("content")
+        .and_then(|content| content.as_str())
+        .filter(|content| !content.trim().is_empty())
+        .or_else(|| message.get("reasoning").and_then(|value| value.as_str()))
+        .ok_or_else(|| "Il modello non ha restituito testo.".to_string())?;
+    Ok((content.trim().to_string(), usage))
+}
+
+fn parse_json_content(content: &str) -> Result<Value, String> {
+    let mut text = content.trim();
+    if text.starts_with("```") {
+        text = text
+            .strip_prefix("```json")
+            .or_else(|| text.strip_prefix("```JSON"))
+            .or_else(|| text.strip_prefix("```"))
+            .unwrap_or(text);
+        if let Some(end) = text.rfind("```") {
+            text = &text[..end];
+        }
+    }
+    let start = text.find('{').ok_or_else(|| "JSON del planner assente".to_string())?;
+    let end = text.rfind('}').ok_or_else(|| "JSON del planner incompleto".to_string())?;
+    if end < start {
+        return Err("JSON del planner incompleto".into());
+    }
+    serde_json::from_str(&text[start..=end])
+        .map_err(|e| format!("JSON del planner non valido: {e}; contenuto: {}", truncate(text, 240)))
 }
 
 pub async fn stream_chat(
@@ -233,22 +342,38 @@ pub async fn stream_chat(
         "stream": true
     });
 
-    let response = client
+    let request = client
         .post(format!("{}/chat/completions", base_url()))
         .bearer_auth(key)
         .header("Content-Type", "application/json")
         .header("HTTP-Referer", "https://localhost/mermaid-creator")
         .header("X-OpenRouter-Title", "Mermaid Creator")
         .json(&body)
-        .send()
-        .await
-        .map_err(|e| {
-            StreamFailure::new(
-                format!("Connessione a OpenRouter fallita: {e}"),
-                String::new(),
-                false,
-            )
-        })?;
+        .send();
+    let response = tokio::select! {
+        _ = cancel.cancelled() => {
+            return Err(StreamFailure::new("Generazione annullata", String::new(), true));
+        }
+        result = tokio::time::timeout(Duration::from_secs(30), request) => {
+            match result {
+                Err(_) => {
+                    return Err(StreamFailure::new(
+                        "Timeout durante l'invio a OpenRouter (30s).",
+                        String::new(),
+                        false,
+                    ));
+                }
+                Ok(Err(e)) => {
+                    return Err(StreamFailure::new(
+                        format!("Connessione a OpenRouter fallita: {e}"),
+                        String::new(),
+                        false,
+                    ));
+                }
+                Ok(Ok(response)) => response,
+            }
+        }
+    };
 
     let status = response.status();
     if !status.is_success() {
@@ -257,10 +382,14 @@ pub async fn stream_chat(
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
             .map(ToOwned::to_owned);
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "corpo non leggibile".to_string());
+        let body = tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(StreamFailure::new("Generazione annullata", String::new(), true));
+            }
+            result = response.text() => {
+                result.unwrap_or_else(|_| "corpo non leggibile".to_string())
+            }
+        };
         return Err(StreamFailure::new(
             http_error(status, &body, retry_after.as_deref()),
             String::new(),
@@ -276,7 +405,7 @@ pub async fn stream_chat(
 
     while !done {
         if cancel.is_cancelled() {
-            return Err(StreamFailure::new("Generazione annullata", content, true));
+            return Err(StreamFailure::new("Generazione annullata", content, true).with_usage(usage.clone()));
         }
 
         let next = tokio::select! {
@@ -285,7 +414,7 @@ pub async fn stream_chat(
                     "Generazione annullata",
                     content,
                     true,
-                ));
+                ).with_usage(usage.clone()));
             }
             result = tokio::time::timeout(Duration::from_secs(90), stream.next()) => result,
         };
@@ -295,7 +424,7 @@ pub async fn stream_chat(
                     "Timeout: il provider non ha inviato dati per 90 secondi.",
                     content,
                     false,
-                ))
+                ).with_usage(usage.clone()))
             }
             Ok(None) => break,
             Ok(Some(Err(e))) => {
@@ -303,7 +432,7 @@ pub async fn stream_chat(
                     format!("Errore durante lo streaming: {e}"),
                     content,
                     false,
-                ))
+                ).with_usage(usage.clone()))
             }
             Ok(Some(Ok(chunk))) => chunk,
         };
@@ -339,7 +468,7 @@ pub async fn stream_chat(
                     format!("OpenRouter: {}", truncate(message, 500)),
                     content,
                     false,
-                ));
+                ).with_usage(usage.clone()));
             }
             if let Some(parsed_usage) = value.get("usage").and_then(parse_usage) {
                 usage = Some(parsed_usage);
@@ -366,7 +495,7 @@ pub async fn stream_chat(
                                 "Finestra chiusa durante lo streaming",
                                 content,
                                 true,
-                            ));
+                            ).with_usage(usage.clone()));
                         }
                     }
                 }
@@ -379,8 +508,29 @@ pub async fn stream_chat(
             "Il modello non ha restituito testo.",
             content,
             false,
-        ));
+        ).with_usage(usage.clone()));
     }
 
     Ok(StreamOutcome { content, usage })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_plain_and_fenced_json() {
+        let plain = parse_json_content(r#"{"research":true,"queries":["x"]}"#).unwrap();
+        assert_eq!(plain["research"], true);
+        let fenced = parse_json_content("```json\n{\"research\":false}\n```").unwrap();
+        assert_eq!(fenced["research"], false);
+        let wrapped = parse_json_content("ecco il piano: {\"research\":true} fine").unwrap();
+        assert_eq!(wrapped["research"], true);
+    }
+
+    #[test]
+    fn rejects_missing_json() {
+        assert!(parse_json_content("nessun json").is_err());
+        assert!(parse_json_content("{incompleto").is_err());
+    }
 }

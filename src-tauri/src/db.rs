@@ -8,13 +8,17 @@ use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 use crate::models::{
-    Attachment, AttachmentImport, Conversation, Diagram, DiagramBoard, DiagramInput, DiagramVersion,
-    Message,
+    Attachment, AttachmentImport, BoardLibrary, BoardLibraryCatalog, Conversation, Diagram,
+    DiagramBoard, DiagramInput, DiagramVersion, Message,
 };
 
 /// Limite della scena serializzata: oltre, l'autosave fallisce con un messaggio
 /// esplicito invece di gonfiare il DB.
 pub const MAX_BOARD_BYTES: usize = 25 * 1024 * 1024;
+
+/// Limite della libreria Excalidraw e del catalogo della comunità.
+pub const MAX_LIBRARY_BYTES: usize = 25 * 1024 * 1024;
+pub const MAX_LIBRARY_CATALOG_BYTES: usize = 8 * 1024 * 1024;
 
 pub fn now_ms() -> i64 {
     SystemTime::now()
@@ -179,6 +183,29 @@ const SCHEMA_V2: &str = r#"
     );
 "#;
 
+/// Persistenza globale della libreria Excalidraw e cache del catalogo della
+/// comunità. Una sola riga per tabella: la libreria è condivisa da tutte le
+/// lavagne.
+const SCHEMA_V3: &str = r#"
+    CREATE TABLE IF NOT EXISTS excalidraw_library (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        items_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS excalidraw_library_catalog (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        catalog_json TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL
+    );
+"#;
+
+/// Feedback dell'utente sulle viste generate dall'AI. Colonna additiva per
+/// non toccare le query esistenti su titolo/sorgente.
+const SCHEMA_V4: &str = r#"
+    ALTER TABLE diagrams ADD COLUMN feedback INTEGER NOT NULL DEFAULT 0;
+"#;
+
 /// Applica le migrazioni in transazione: `user_version` viene aggiornata solo
 /// insieme allo schema, così un errore non lascia un DB a metà.
 fn migrate(conn: &mut Connection) -> Result<(), String> {
@@ -202,6 +229,24 @@ fn migrate(conn: &mut Connection) -> Result<(), String> {
         tx.pragma_update(None, "user_version", 2)
             .map_err(|e| format!("Versione schema fallita: {e}"))?;
         tx.commit().map_err(|e| format!("Commit migrazione v2 fallito: {e}"))?;
+    }
+
+    if version < 3 {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(SCHEMA_V3)
+            .map_err(|e| format!("Migrazione v3 fallita: {e}"))?;
+        tx.pragma_update(None, "user_version", 3)
+            .map_err(|e| format!("Versione schema fallita: {e}"))?;
+        tx.commit().map_err(|e| format!("Commit migrazione v3 fallito: {e}"))?;
+    }
+
+    if version < 4 {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(SCHEMA_V4)
+            .map_err(|e| format!("Migrazione v4 fallita: {e}"))?;
+        tx.pragma_update(None, "user_version", 4)
+            .map_err(|e| format!("Versione schema fallita: {e}"))?;
+        tx.commit().map_err(|e| format!("Commit migrazione v4 fallito: {e}"))?;
     }
 
     Ok(())
@@ -468,6 +513,21 @@ pub fn update_message(
     .map_err(|e| e.to_string())
 }
 
+/// Aggiorna solo il testo di un messaggio assistente. Usato dal correttore
+/// Mermaid: la risposta resta `complete` e mantiene usage/error esistenti.
+pub fn update_assistant_content(conn: &Connection, id: &str, content: &str) -> Result<(), String> {
+    let changed = conn
+        .execute(
+            "UPDATE messages SET content=?1 WHERE id=?2 AND role='assistant'",
+            params![content, id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("Messaggio assistente non trovato".into());
+    }
+    Ok(())
+}
+
 pub fn link_attachments(conn: &Connection, ids: &[String], message_id: &str) -> Result<(), String> {
     for (index, id) in ids.iter().enumerate() {
         conn.execute(
@@ -582,8 +642,9 @@ fn map_diagram(row: &rusqlite::Row<'_>) -> rusqlite::Result<Diagram> {
         diagram_type: row.get(6)?,
         in_library: row.get::<_, i64>(7)? != 0,
         favorite: row.get::<_, i64>(8)? != 0,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        feedback: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
     })
 }
 
@@ -591,7 +652,7 @@ pub fn list_diagrams(conn: &Connection, conversation_id: &str) -> Result<Vec<Dia
     let mut stmt = conn
         .prepare(
             "SELECT id,conversation_id,message_id,ordinal,title,source,diagram_type,
-                    in_library,favorite,created_at,updated_at
+                    in_library,favorite,feedback,created_at,updated_at
              FROM diagrams WHERE conversation_id=?1 ORDER BY ordinal, created_at",
         )
         .map_err(|e| e.to_string())?;
@@ -605,7 +666,7 @@ pub fn list_diagrams(conn: &Connection, conversation_id: &str) -> Result<Vec<Dia
 pub fn get_diagram(conn: &Connection, id: &str) -> Result<Option<Diagram>, String> {
     conn.query_row(
         "SELECT id,conversation_id,message_id,ordinal,title,source,diagram_type,
-                in_library,favorite,created_at,updated_at
+                in_library,favorite,feedback,created_at,updated_at
          FROM diagrams WHERE id=?1",
         params![id],
         map_diagram,
@@ -620,7 +681,7 @@ pub fn list_library(conn: &Connection, query: &str) -> Result<Vec<Diagram>, Stri
     let mut stmt = conn
         .prepare(
             "SELECT id,conversation_id,message_id,ordinal,title,source,diagram_type,
-                    in_library,favorite,created_at,updated_at
+                    in_library,favorite,feedback,created_at,updated_at
              FROM diagrams
              WHERE in_library=1 AND (?1='' OR title LIKE ?2 OR source LIKE ?2)
              ORDER BY updated_at DESC",
@@ -692,7 +753,7 @@ pub fn diagrams_sync(
             if let Some(target) = target_id {
                 tx.query_row(
                     "SELECT id,conversation_id,message_id,ordinal,title,source,diagram_type,
-                            in_library,favorite,created_at,updated_at
+                            in_library,favorite,feedback,created_at,updated_at
                      FROM diagrams WHERE id=?1",
                     params![target],
                     map_diagram,
@@ -730,7 +791,7 @@ pub fn diagrams_sync(
         let existing = tx
             .query_row(
                 "SELECT id,conversation_id,message_id,ordinal,title,source,diagram_type,
-                        in_library,favorite,created_at,updated_at
+                        in_library,favorite,feedback,created_at,updated_at
                  FROM diagrams WHERE message_id=?1 AND ordinal=?2 LIMIT 1",
                 params![message_id, ordinal],
                 map_diagram,
@@ -830,6 +891,26 @@ pub fn set_diagram_flags(
         params![lib as i64, fav as i64, now_ms(), id],
     )
     .map_err(|e| e.to_string())?;
+    get_diagram(conn, id)?.ok_or_else(|| "Diagramma non trovato".to_string())
+}
+
+pub fn set_diagram_feedback(
+    conn: &Connection,
+    id: &str,
+    feedback: i64,
+) -> Result<Diagram, String> {
+    if ![-1, 0, 1].contains(&feedback) {
+        return Err("Feedback non valido".into());
+    }
+    let changed = conn
+        .execute(
+            "UPDATE diagrams SET feedback=?1 WHERE id=?2",
+            params![feedback, id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err("Diagramma non trovato".into());
+    }
     get_diagram(conn, id)?.ok_or_else(|| "Diagramma non trovato".to_string())
 }
 
@@ -1027,6 +1108,96 @@ pub fn delete_board(conn: &Connection, diagram_id: &str) -> Result<(), String> {
     .map_err(|e| e.to_string())
 }
 
+fn validate_json_array(raw: &str, max_bytes: usize, label: &str) -> Result<(), String> {
+    if raw.trim().is_empty() {
+        return Err(format!("{label} vuota"));
+    }
+    if raw.len() > max_bytes {
+        return Err(format!(
+            "{label} troppo grande (max {} MB)",
+            max_bytes / (1024 * 1024)
+        ));
+    }
+    let value: serde_json::Value =
+        serde_json::from_str(raw).map_err(|e| format!("{label} non valida: {e}"))?;
+    if !value.is_array() {
+        return Err(format!("{label} non valida: atteso un array JSON"));
+    }
+    Ok(())
+}
+
+pub fn get_excalidraw_library(conn: &Connection) -> Result<Option<BoardLibrary>, String> {
+    conn.query_row(
+        "SELECT items_json, updated_at FROM excalidraw_library WHERE id=1",
+        [],
+        |r| {
+            Ok(BoardLibrary {
+                items_json: r.get(0)?,
+                updated_at: r.get(1)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn save_excalidraw_library(
+    conn: &Connection,
+    items_json: &str,
+) -> Result<BoardLibrary, String> {
+    validate_json_array(items_json, MAX_LIBRARY_BYTES, "Libreria Excalidraw")?;
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO excalidraw_library(id,items_json,updated_at) VALUES (1,?1,?2)
+         ON CONFLICT(id) DO UPDATE SET items_json=excluded.items_json, updated_at=excluded.updated_at",
+        params![items_json, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(BoardLibrary {
+        items_json: items_json.to_string(),
+        updated_at: now,
+    })
+}
+
+pub fn get_excalidraw_library_catalog(
+    conn: &Connection,
+) -> Result<Option<BoardLibraryCatalog>, String> {
+    conn.query_row(
+        "SELECT catalog_json, fetched_at FROM excalidraw_library_catalog WHERE id=1",
+        [],
+        |r| {
+            Ok(BoardLibraryCatalog {
+                catalog_json: r.get(0)?,
+                fetched_at: r.get(1)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+pub fn save_excalidraw_library_catalog(
+    conn: &Connection,
+    catalog_json: &str,
+) -> Result<BoardLibraryCatalog, String> {
+    validate_json_array(
+        catalog_json,
+        MAX_LIBRARY_CATALOG_BYTES,
+        "Catalogo librerie",
+    )?;
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO excalidraw_library_catalog(id,catalog_json,fetched_at) VALUES (1,?1,?2)
+         ON CONFLICT(id) DO UPDATE SET catalog_json=excluded.catalog_json, fetched_at=excluded.fetched_at",
+        params![catalog_json, now],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(BoardLibraryCatalog {
+        catalog_json: catalog_json.to_string(),
+        fetched_at: now,
+    })
+}
+
 pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, String> {
     conn.query_row(
         "SELECT value FROM settings WHERE key=?1",
@@ -1100,7 +1271,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v1_to_v2_preserving_data() {
+    fn migrates_v1_to_v4_preserving_data() {
         let mut conn = open_v1();
         insert_diagram(&conn, "d1", None, false);
         conn.execute(
@@ -1115,13 +1286,15 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 4);
         assert_eq!(get_diagram(&conn, "d1").unwrap().unwrap().title, "Test");
         let old = versions(&conn, "d1");
         assert_eq!(old.len(), 1);
         assert_eq!(old[0].source, "flowchart LR\n A-->B");
         assert!(old[0].board_snapshot.is_none());
         assert!(get_board(&conn, "d1").unwrap().is_none());
+        assert!(get_excalidraw_library(&conn).unwrap().is_none());
+        assert!(get_excalidraw_library_catalog(&conn).unwrap().is_none());
     }
 
     #[test]
@@ -1177,6 +1350,18 @@ mod tests {
         assert!(create_board(&conn, "d1", &huge, "manual", None)
             .unwrap_err()
             .contains("troppo grande"));
+    }
+
+    #[test]
+    fn diagram_feedback_defaults_and_updates() {
+        let conn = migrated();
+        insert_diagram(&conn, "d1", None, false);
+        assert_eq!(get_diagram(&conn, "d1").unwrap().unwrap().feedback, 0);
+        assert_eq!(set_diagram_feedback(&conn, "d1", 1).unwrap().feedback, 1);
+        assert_eq!(set_diagram_feedback(&conn, "d1", -1).unwrap().feedback, -1);
+        assert_eq!(set_diagram_feedback(&conn, "d1", 0).unwrap().feedback, 0);
+        assert!(set_diagram_feedback(&conn, "d1", 2).is_err());
+        assert!(set_diagram_feedback(&conn, "missing", 1).is_err());
     }
 
     #[test]
@@ -1298,5 +1483,56 @@ mod tests {
         assert_eq!(board.scene_json, scene("manual-work"));
         // Il client calcola stale: base_source non coincide col sorgente ripristinato.
         assert_ne!(board.base_source.as_deref(), Some("flowchart LR\n X-->Y"));
+    }
+
+    #[test]
+    fn excalidraw_library_round_trip_and_limits() {
+        let conn = migrated();
+        assert!(get_excalidraw_library(&conn).unwrap().is_none());
+
+        let items = r#"[{"id":"lib-1","name":"Test","elements":[]}]"#;
+        let saved = save_excalidraw_library(&conn, items).unwrap();
+        assert_eq!(saved.items_json, items);
+        assert!(saved.updated_at > 0);
+        assert_eq!(
+            get_excalidraw_library(&conn).unwrap().unwrap().items_json,
+            items
+        );
+
+        // Una libreria vuota è valida e cancella gli elementi precedenti.
+        save_excalidraw_library(&conn, "[]").unwrap();
+        assert_eq!(get_excalidraw_library(&conn).unwrap().unwrap().items_json, "[]");
+
+        assert!(save_excalidraw_library(&conn, "not-json").is_err());
+        assert!(save_excalidraw_library(&conn, "{}").is_err());
+        assert!(save_excalidraw_library(&conn, "").is_err());
+        let huge = format!(r#"["{}"]"#, "x".repeat(MAX_LIBRARY_BYTES));
+        assert!(save_excalidraw_library(&conn, &huge)
+            .unwrap_err()
+            .contains("troppo grande"));
+    }
+
+    #[test]
+    fn excalidraw_library_catalog_round_trip_and_limits() {
+        let conn = migrated();
+        assert!(get_excalidraw_library_catalog(&conn).unwrap().is_none());
+
+        let catalog = r#"[{"id":"a","name":"Libreria","source":"a.excalidrawlib"}]"#;
+        let saved = save_excalidraw_library_catalog(&conn, catalog).unwrap();
+        assert_eq!(saved.catalog_json, catalog);
+        assert!(saved.fetched_at > 0);
+        assert_eq!(
+            get_excalidraw_library_catalog(&conn)
+                .unwrap()
+                .unwrap()
+                .catalog_json,
+            catalog
+        );
+
+        assert!(save_excalidraw_library_catalog(&conn, "{}").is_err());
+        let huge = format!(r#"["{}"]"#, "x".repeat(MAX_LIBRARY_CATALOG_BYTES));
+        assert!(save_excalidraw_library_catalog(&conn, &huge)
+            .unwrap_err()
+            .contains("troppo grande"));
     }
 }

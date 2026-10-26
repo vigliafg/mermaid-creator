@@ -14,6 +14,7 @@ export function SettingsView() {
   const [prompt, setPrompt] = useState(settings.system_prompt ?? "");
   const [showModels, setShowModels] = useState(false);
   const currentModel = models.find((model) => model.id === settings.model_id);
+  const compactPrompt = settings.prompt_profile === "compact";
 
   useEffect(() => {
     setPrompt(settings.system_prompt ?? "");
@@ -157,6 +158,24 @@ export function SettingsView() {
             placeholder="Lascia vuoto per usare il prompt predefinito…"
             rows={8}
           />
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={compactPrompt}
+              onChange={(event) =>
+                void setSetting(
+                  "prompt_profile",
+                  event.target.checked ? "compact" : "full",
+                )
+              }
+            />
+            <span>Prompt compatto per modelli free/piccoli</span>
+          </label>
+          <p className="form-help">
+            Ignorato se usi un prompt personalizzato. La variante compatta riduce
+            analisi e regole per lasciare più contesto ai modelli piccoli; è meno
+            precisa del prompt completo e va usata solo quando serve.
+          </p>
           <div className="row-actions">
             <button className="btn btn-ghost" onClick={() => setPrompt("")}>
               Ripristina

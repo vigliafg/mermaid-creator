@@ -25,6 +25,77 @@
 - Scorciatoie dell'app isolate: `V`, `H`, `Delete`, undo/redo Mermaid ed `Esc`
   non intercettano Excalidraw; `Ctrl/Cmd + S` salva la versione.
 
+### Libreria Excalidraw e librerie della comunità
+
+- La finestra **Library** dell'editor è attiva: salvataggio degli elementi
+  selezionati, inserimento nella lavagna, rinomina, eliminazione e reset.
+- Gli elementi della libreria sono **globali** e persistono in SQLite tra
+  sessioni e riavvii (tabella `excalidraw_library`, migrazione `user_version = 3`).
+  Nel browser di sviluppo è attivo un fallback `localStorage`.
+- Il pulsante **Sfoglia librerie** apre un catalogo integrato con le librerie
+  pubbliche di `libraries.excalidraw.com` (oltre 200): ricerca, ordinamento,
+  anteprime, download e installazione con un clic.
+- Catalogo e contatori sono memorizzati in `excalidraw_library_catalog`, così
+  la finestra si riapre anche senza rete; le librerie installate restano
+  sempre disponibili offline.
+- Importazione di file `.excalidrawlib` locali. Nessuna richiesta oltre al
+  dominio ufficiale delle librerie (CSP `connect-src`/`img-src` dedicata).
+
+### Prompt Mermaid v4 e grounding
+
+- Nuovo prompt predefinito v4: analisi strutturata di entità, attributi,
+  relazioni, processi, dati e lacune; lista di viste consigliate; regole
+  Mermaid 12.1+; citazioni e «non verificato»; nessuna invenzione di dati.
+- Grounding planner-only e gratuito: Wikipedia, Wikidata, OpenAlex, Bing RSS e
+  URL diretti, con budget (3 query, 2 URL, 8 fonti, 20s) e deduplica.
+- I payload non attendibili (`<web_sources>`, `<selected_diagram>`,
+  `<document>`) viaggiano in messaggi `user` separati, mai nel system message.
+- Il backend aggiunge sempre `## Fonti consultate` quando c'è ricerca e segnala
+  eventuali citazioni `[Sx]` non valide.
+- SSRF hardening: `.no_proxy()`, DNS pinning, redirect manuali, blocco di reti
+  private/IPv6 speciali, limiti di body e content-type.
+- Stato «Analisi e pianificazione…» / «Ricerca fonti…» / «Generazione…» nella
+  bolla di streaming; cancellation e usage coprono planner, ricerca e stream.
+- Bing RSS è pensato per uso personale/non commerciale; per uso commerciale va
+  sostituito con SearXNG/Brave. Vedi `docs/ai-grounding.md`.
+
+### Qualità dei diagrammi
+
+- **Auto-repair Mermaid**: dopo la risposta l'app valida i blocchi con Pele e, se
+  serve, con Mermaid; i diagrammi non validi vengono corretti dal modello (max 2
+  tentativi) e il testo aggiornato viene salvato. Se la correzione fallisce,
+  l'utente viene avvisato e può intervenire dall'editor.
+- **Feedback sulle viste**: ogni card diagramma in chat ha pollice su/giù,
+  persistito in SQLite (`diagrams.feedback`, migrazione `user_version = 4`).
+- **Few-shot mirati**: il prompt aggiunge un esempio compatto del tipo richiesto
+  (flowchart, sequence, class, ER, state, mindmap, gantt, xychart, journey,
+  quadrant, timeline, pie).
+- **Valutazione su testi reali**: `eval/prompts/cases.json` con 60 casi e
+  harness `npm run eval:prompt` / `npm run eval:prompt:check` per misurare
+  top-1, coerenza top/generato, validità Mermaid raw e finale, termini chiave e
+  latenza. Modello di riferimento: `openai/gpt-4o-mini`.
+- **Prompt compatto opzionale** per modelli free/piccoli, attivabile dalle
+  impostazioni (circa 1/3 del full, meno preciso sulla scelta della vista);
+  ignora il prompt personalizzato solo quando il campo è vuoto.
+- **Esito eval attuale**: 60/60 PASS, top-1 100%, coerenza 100%, sintassi raw
+  93%, sintassi finale 100%. **Holdout indipendente (15 casi)**: 15/15 PASS,
+  top-1 100%, coerenza 100%, sintassi raw 93%, sintassi finale 100%.
+- **Modelli reasoning**: planner con budget 1200 token, fallback sul testo di
+  reasoning se `content` è vuoto; generazione principale senza `max_tokens`
+  basso per non troncare il contenuto.
+
+### Onboarding
+
+- L'onboarding iniziale è in **due passi**: prima la API key OpenRouter, poi la
+  scelta del modello predefinito dal catalogo completo (ricerca, filtri
+  Vision/Gratis, prezzi e contesto).
+- Dopo la verifica della key il selettore si apre automaticamente; il modello
+  consigliato resta preselezionato e **Inizia** conferma la scelta.
+- Se il catalogo non è raggiungibile si può riprovare o continuare e configurare
+  il modello dalle impostazioni.
+- Se disponibile, l'onboarding preseleziona **`openai/gpt-4o-mini`** come modello
+  predefinito; l'utente può cambiarlo subito dal selettore.
+
 ### Autosave, versioni e sincronizzazione
 
 - Autosave single-flight con debounce di 600 ms, revisione monotona e flush

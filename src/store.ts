@@ -1,7 +1,18 @@
 import { create } from "zustand";
 import { toast } from "sonner";
 import { api } from "./lib/ipc";
-import { extractMermaidBlocks, diagramType } from "./lib/diagram";
+import {
+  cleanMermaidSource,
+  diagramType,
+  ensureDiagramMeta,
+  extractMermaidBlocks,
+  renderDiagram,
+  replaceMermaidBlockSource,
+  simplifyQuadrantLabels,
+  simplifySequenceActivations,
+  simplifyXYChartSeries,
+  validateSourceSync,
+} from "./lib/diagram";
 import { mergeAfterAi } from "./lib/diagram/document";
 import { parseThemeMap, resolveTheme, themeForId, type DiagramTheme } from "./lib/diagram/theme";
 import {
@@ -26,6 +37,9 @@ import type {
 } from "./types";
 
 type View = "chat" | "library" | "settings";
+
+/** Modello preferito per onboarding e nuovi utenti; l'utente può cambiarlo. */
+export const PREFERRED_MODEL_ID = "openai/gpt-4o-mini";
 export type WorkspaceMode = "diagram" | "board";
 
 function titleFromText(text: string): string {
@@ -37,6 +51,106 @@ function titleFromText(text: string): string {
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+async function validateMermaidSource(
+  source: string,
+): Promise<{ ok: boolean; error: string }> {
+  const sync = validateSourceSync(source);
+  if (sync.ok) return { ok: true, error: "" };
+  try {
+    await renderDiagram(source, "light", "light");
+    return { ok: true, error: "" };
+  } catch (error) {
+    return {
+      ok: false,
+      error: [sync.error ?? "", errorText(error)].filter(Boolean).join("\n"),
+    };
+  }
+}
+
+async function repairMermaidBlocks(
+  blocks: ReturnType<typeof extractMermaidBlocks>,
+  content: string,
+  modelId: string,
+  targetId: string | null,
+): Promise<{ content: string; repaired: number; failed: number; invalid: number }> {
+  let next = content;
+  let repaired = 0;
+  let failed = 0;
+  let invalid = 0;
+  for (let index = 0; index < Math.min(blocks.length, 4); index += 1) {
+    const block = blocks[index];
+    const validation = await validateMermaidSource(block.source);
+    if (validation.ok) continue;
+    if (invalid === 0) toast.info("Correggo la sintassi Mermaid…");
+    invalid += 1;
+    let source = block.source;
+    let error = validation.error;
+    let fixed = false;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const raw = await api.diagramRepair(
+          modelId,
+          source,
+          error,
+          targetId && index === 0 ? targetId : null,
+        );
+        const candidate = ensureDiagramMeta(cleanMermaidSource(raw), {
+          title: block.title,
+          targetId: targetId && index === 0 ? targetId : null,
+        });
+        const check = await validateMermaidSource(candidate);
+        if (check.ok) {
+          source = candidate;
+          fixed = true;
+          break;
+        }
+        source = candidate;
+        error = check.error;
+      } catch (repairError) {
+        error = errorText(repairError);
+        break;
+      }
+    }
+    if (!fixed) {
+      const sequenceFixed = simplifySequenceActivations(source);
+      if (sequenceFixed !== source) {
+        const check = await validateMermaidSource(sequenceFixed);
+        if (check.ok) {
+          source = sequenceFixed;
+          fixed = true;
+        }
+      }
+      if (!fixed) {
+        const chartFixed = simplifyXYChartSeries(source);
+        if (chartFixed !== source) {
+          const check = await validateMermaidSource(chartFixed);
+          if (check.ok) {
+            source = chartFixed;
+            fixed = true;
+          }
+        }
+      }
+      if (!fixed) {
+        const quadrantFixed = simplifyQuadrantLabels(source);
+        if (quadrantFixed !== source) {
+          const check = await validateMermaidSource(quadrantFixed);
+          if (check.ok) {
+            source = quadrantFixed;
+            fixed = true;
+          }
+        }
+      }
+    }
+    if (fixed) {
+      next = replaceMermaidBlockSource(next, block.ordinal, source);
+      repaired += 1;
+    } else {
+      failed += 1;
+    }
+  }
+  return { content: next, repaired, failed, invalid };
 }
 
 interface AppStore {
@@ -67,6 +181,7 @@ interface AppStore {
   pendingAttachments: PendingAttachment[];
   streaming: boolean;
   streamText: string;
+  chatStatus: string;
   requestId: string | null;
   loading: boolean;
   onboardingDismissed: boolean;
@@ -101,12 +216,14 @@ interface AppStore {
   restoreVersion: (versionId: string) => Promise<void>;
   toggleLibrary: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
+  setDiagramFeedback: (id: string, feedback: number) => Promise<void>;
   deleteDiagram: (id: string) => Promise<void>;
   loadLibrary: (query?: string) => Promise<void>;
   saveKey: (key: string) => Promise<void>;
   deleteKey: () => Promise<void>;
   refreshKeyStatus: () => Promise<void>;
   setModel: (modelId: string) => Promise<void>;
+  preferDefaultModel: () => Promise<void>;
   setSetting: (key: string, value: string) => Promise<void>;
   refreshAppInfo: () => Promise<void>;
 }
@@ -149,6 +266,7 @@ export const useApp = create<AppStore>((set, get) => ({
   pendingAttachments: [],
   streaming: false,
   streamText: "",
+  chatStatus: "",
   requestId: null,
   loading: true,
   onboardingDismissed: false,
@@ -190,7 +308,10 @@ export const useApp = create<AppStore>((set, get) => ({
       set({ models, modelsLoading: false });
       const current = get().settings.model_id;
       if (!current || !models.some((model) => model.id === current)) {
-        const fallback = models.find((model) => !model.id.endsWith(":free")) ?? models[0];
+        const fallback =
+          models.find((model) => model.id === PREFERRED_MODEL_ID) ??
+          models.find((model) => !model.id.endsWith(":free")) ??
+          models[0];
         if (fallback) {
           await get().setSetting("model_id", fallback.id);
         }
@@ -366,15 +487,21 @@ export const useApp = create<AppStore>((set, get) => ({
           )
         : null;
       const attachmentIds = get().pendingAttachments.map((item) => item.id);
+      const currentDate = new Date().toISOString().slice(0, 10);
       set({
         streaming: true,
         streamText: "",
+        chatStatus: "Analisi e pianificazione…",
         requestId,
         view: "chat",
         workspaceMode: "diagram",
       });
 
       const handleEvent = (event: ChatEvent) => {
+        if (event.event === "status") {
+          set({ chatStatus: event.data.message });
+          return;
+        }
         if (event.event === "delta") {
           set((state) => ({ streamText: state.streamText + event.data.text }));
           return;
@@ -388,7 +515,7 @@ export const useApp = create<AppStore>((set, get) => ({
           return;
         }
         if (event.event === "done") {
-          set({ streaming: false, requestId: null, streamText: "" });
+          set({ streaming: false, requestId: null, streamText: "", chatStatus: "" });
           void (async () => {
             try {
               const data = event.data as typeof event.data & { message_id?: string };
@@ -397,9 +524,34 @@ export const useApp = create<AppStore>((set, get) => ({
                 toast.error("Evento di completamento senza messageId");
                 return;
               }
-              const themeCommand = extractThemeCommand(data.content);
-              const themeRequested = hasThemeCommandFence(data.content);
-              const blocks = extractMermaidBlocks(data.content, {
+              const initialBlocks = extractMermaidBlocks(data.content, {
+                closedOnly: true,
+              });
+              const repaired = await repairMermaidBlocks(
+                initialBlocks,
+                data.content,
+                modelId,
+                targetId,
+              );
+              if (repaired.repaired > 0) {
+                toast.success(
+                  `Mermaid corretto${repaired.repaired === 1 ? "" : ` (${repaired.repaired} diagrammi)`}`,
+                );
+                try {
+                  await api.messageUpdateContent(messageId, repaired.content);
+                } catch (error) {
+                  toast.warning(`Testo corretto non salvato: ${errorText(error)}`);
+                }
+              }
+              if (repaired.failed > 0) {
+                toast.warning(
+                  `${repaired.failed} diagramma/i restano non validi: correggili dall'editor.`,
+                );
+              }
+              const finalContent = repaired.content;
+              const themeCommand = extractThemeCommand(finalContent);
+              const themeRequested = hasThemeCommandFence(finalContent);
+              const blocks = extractMermaidBlocks(finalContent, {
                 closedOnly: true,
               });
               const items: DiagramInput[] = blocks.map((block) => ({
@@ -497,7 +649,7 @@ export const useApp = create<AppStore>((set, get) => ({
           return;
         }
         if (event.event === "error" || event.event === "cancelled") {
-          set({ streaming: false, requestId: null, streamText: "" });
+          set({ streaming: false, requestId: null, streamText: "", chatStatus: "" });
           void api
             .messagesList(conversationId!)
             .then((messages) => set({ messages }))
@@ -519,11 +671,12 @@ export const useApp = create<AppStore>((set, get) => ({
           targetDiagramId: targetId,
           targetTheme,
           attachmentIds,
+          currentDate,
         },
         handleEvent,
       );
     } catch (error) {
-      set({ streaming: false, requestId: null, streamText: "" });
+      set({ streaming: false, requestId: null, streamText: "", chatStatus: "" });
       toast.error(errorText(error));
     }
   },
@@ -780,6 +933,39 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   },
 
+  setDiagramFeedback: async (id, feedback) => {
+    const diagram =
+      get().diagrams.find((item) => item.id === id) ??
+      get().library.find((item) => item.id === id);
+    if (!diagram) return;
+    const next = diagram.feedback === feedback ? 0 : feedback;
+    set((state) => ({
+      diagrams: state.diagrams.map((item) =>
+        item.id === id ? { ...item, feedback: next } : item,
+      ),
+      library: state.library.map((item) =>
+        item.id === id ? { ...item, feedback: next } : item,
+      ),
+    }));
+    try {
+      const updated = await api.diagramSetFeedback(id, next);
+      set((state) => ({
+        diagrams: state.diagrams.map((item) => (item.id === id ? updated : item)),
+        library: state.library.map((item) => (item.id === id ? updated : item)),
+      }));
+    } catch (error) {
+      set((state) => ({
+        diagrams: state.diagrams.map((item) =>
+          item.id === id ? { ...item, feedback: diagram.feedback } : item,
+        ),
+        library: state.library.map((item) =>
+          item.id === id ? { ...item, feedback: diagram.feedback } : item,
+        ),
+      }));
+      toast.error(`Feedback: ${errorText(error)}`);
+    }
+  },
+
   deleteDiagram: async (id) => {
     if (get().workspaceMode === "board" && get().selectedDiagramId === id) {
       if (!(await flushBeforeLeaving(get))) return;
@@ -856,6 +1042,13 @@ export const useApp = create<AppStore>((set, get) => ({
     } catch (error) {
       toast.error(`Modello: ${errorText(error)}`);
     }
+  },
+
+  preferDefaultModel: async () => {
+    const preferred = get().models.find((model) => model.id === PREFERRED_MODEL_ID);
+    if (!preferred) return;
+    if (get().settings.model_id === preferred.id) return;
+    await get().setModel(preferred.id);
   },
 
   setSetting: async (key, value) => {

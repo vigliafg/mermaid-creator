@@ -13,7 +13,10 @@
     "tauri:dev": "bash scripts/with-env.sh tauri dev",
     "tauri:build": "bash scripts/with-env.sh tauri build",
     "test:render": "node scripts/render-parity.mjs",
-    "board:assets": "node scripts/copy-excalidraw-assets.mjs"
+    "eval:prompt": "node scripts/eval-prompts.mjs",
+    "eval:prompt:check": "node scripts/eval-prompts.mjs --check",
+    "board:assets": "node scripts/copy-excalidraw-assets.mjs",
+    "eval:prompt:holdout": "node scripts/eval-prompts.mjs --holdout"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "0.18.0-a9ca16e",

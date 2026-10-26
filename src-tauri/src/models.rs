@@ -55,6 +55,8 @@ pub struct Diagram {
     pub diagram_type: String,
     pub in_library: bool,
     pub favorite: bool,
+    /// -1 = vista non utile, 0 = nessun feedback, 1 = vista utile.
+    pub feedback: i64,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -87,6 +89,24 @@ pub struct DiagramBoard {
     pub updated_at: i64,
 }
 
+/// Libreria Excalidraw globale dell'app (non legata a un singolo diagramma).
+/// `items_json` è l'array di `LibraryItem` serializzato da Excalidraw.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardLibrary {
+    pub items_json: String,
+    pub updated_at: i64,
+}
+
+/// Cache del catalogo delle librerie della comunità, per riaprire la finestra
+/// anche senza rete. Gli elementi installati restano in `BoardLibrary`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardLibraryCatalog {
+    pub catalog_json: String,
+    pub fetched_at: i64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagramInput {
@@ -109,6 +129,8 @@ pub struct SendRequest {
     pub target_theme: Option<String>,
     #[serde(default)]
     pub attachment_ids: Vec<String>,
+    #[serde(default)]
+    pub current_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -141,6 +163,9 @@ pub enum ChatEvent {
     Started {
         user_message_id: String,
         assistant_message_id: String,
+    },
+    Status {
+        message: String,
     },
     Delta {
         text: String,

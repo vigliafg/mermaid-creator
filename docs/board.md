@@ -90,6 +90,25 @@ sempre dal dialogo Tauri dell'app.
 - I link `http/https` si aprono nel browser di sistema con il plugin Tauri
   `opener`, non nella webview.
 
+## Libreria Excalidraw e librerie della comunità
+
+- La libreria è **globale** (non per lavagna) e vive in SQLite nella tabella
+  `excalidraw_library` a riga singola. L'adapter di `useHandleLibrary` carica
+  gli elementi all'apertura della lavagna e salva ogni modifica.
+- Nel browser di sviluppo (`vite` senza Tauri) lo stesso adapter usa
+  `localStorage`, così il flusso resta utilizzabile.
+- **Sfoglia librerie** non apre una nuova finestra della webview: intercetta il
+  link ufficiale e apre il catalogo integrato. Il catalogo arriva da
+  `https://libraries.excalidraw.com/libraries.json` (più `stats.json` per i
+  download), viene convalidato e memorizzato in `excalidraw_library_catalog`.
+- L'installazione scarica `<origin>/libraries/<source>` e passa il file
+  `.excalidrawlib` a `updateLibrary({ merge: true })`; un file locale può
+  essere importato dallo stesso dialogo.
+- Previews e file sono ammessi dalla CSP solo dal dominio ufficiale. Il limite
+  di sicurezza è 25 MB per la libreria e 8 MB per il catalogo.
+- Al primo avvio con `user_version = 3` le tabelle vengono create in
+  transazione; i DB v1/v2 esistenti migrano senza perdere lavagne o versioni.
+
 ## Tastiera
 
 In modalità Lavagna le scorciatoie dell'app sono disattivate: `V`, `H`,
@@ -110,7 +129,9 @@ In modalità Lavagna le scorciatoie dell'app sono disattivate: `V`, `H`,
   serve **Aggiorna** (con snapshot).
 - **Persistenza**: tabella `diagram_boards(diagram_id PK, scene_json, origin,
   base_source, created_at, updated_at)` e colonna nullable `board_snapshot` in
-  `diagram_versions`; migrazione `user_version = 2` in transazione.
+  `diagram_versions`; migrazione `user_version = 2` in transazione. La libreria
+  Excalidraw globale e la cache del catalogo della comunità usano
+  `excalidraw_library` e `excalidraw_library_catalog` (`user_version = 3`).
 - **Distribuzione del fork**: l'app consuma
   `@excalidraw/mermaid-to-excalidraw` dal tarball `npm pack` versionato in
   `vendor/` (commit sorgente e sha256 in `vendor/README.md`). È versionato nel
@@ -125,5 +146,8 @@ In modalità Lavagna le scorciatoie dell'app sono disattivate: `V`, `H`,
 - `src/lib/board/conversion.ts` — wrapper del fork, timeout, qualità.
 - `src/lib/board/useBoardAutosave.ts` — autosave single-flight.
 - `src/lib/board/export.ts` — PNG/SVG/.excalidraw e appunti.
-- `src/components/board/` — canvas Excalidraw, primo avvio, barra di stato.
-- `src-tauri/src/db.rs` — schema v2, CRUD lavagna, snapshot nelle versioni.
+- `src/lib/board/community.ts` — catalogo ufficiale, ricerca, URL e download.
+- `src/lib/board/libraryStore.ts` — persistenza SQLite/localStorage della libreria.
+- `src/components/board/` — canvas Excalidraw, primo avvio, barra di stato,
+  dialogo delle librerie della comunità.
+- `src-tauri/src/db.rs` — schema v4, CRUD lavagna, libreria, catalogo e feedback.

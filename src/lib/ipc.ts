@@ -3,6 +3,8 @@ import type {
   AppInfo,
   Attachment,
   AttachmentImport,
+  BoardLibrary,
+  BoardLibraryCatalog,
   ChatEvent,
   Conversation,
   Diagram,
@@ -99,9 +101,25 @@ export const api = {
       inLibrary: inLibrary ?? null,
       favorite: favorite ?? null,
     }),
+  diagramSetFeedback: (id: string, feedback: number) =>
+    invoke<Diagram>("diagram_set_feedback", { id, feedback }),
   diagramDelete: (id: string) => invoke<void>("diagram_delete", { id }),
   diagramVersions: (id: string) =>
     invoke<DiagramVersion[]>("diagram_versions", { id }),
+  messageUpdateContent: (messageId: string, content: string) =>
+    invoke<void>("message_update_content", { messageId, content }),
+  diagramRepair: (
+    modelId: string,
+    source: string,
+    error: string,
+    targetId: string | null,
+  ) =>
+    invoke<string>("diagram_repair", {
+      modelId,
+      source,
+      error,
+      targetId,
+    }),
 
   boardGet: (diagramId: string) =>
     invoke<DiagramBoard | null>("board_get", { diagramId }),
@@ -121,6 +139,14 @@ export const api = {
     invoke<DiagramBoard>("board_save", { diagramId, sceneJson }),
   boardDelete: (diagramId: string) =>
     invoke<void>("board_delete", { diagramId }),
+
+  boardLibraryLoad: () => invoke<BoardLibrary | null>("board_library_load"),
+  boardLibrarySave: (itemsJson: string) =>
+    invoke<BoardLibrary>("board_library_save", { itemsJson }),
+  boardLibraryCatalogLoad: () =>
+    invoke<BoardLibraryCatalog | null>("board_library_catalog_load"),
+  boardLibraryCatalogSave: (catalogJson: string) =>
+    invoke<BoardLibraryCatalog>("board_library_catalog_save", { catalogJson }),
 
   saveFile: (path: string, data: string, binary: boolean) =>
     invoke<void>("save_file", { path, data, binary }),

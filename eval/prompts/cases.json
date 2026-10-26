@@ -1,0 +1,944 @@
+[
+  {
+    "id": "flow-autosave",
+    "title": "Autosave lavagna",
+    "source": "testo realistico sintetico",
+    "text": "La lavagna salva con un debounce di 600 ms e una sola scrittura alla volta. Prima di cambiare modalità o conversazione esegue il flush dell'autosave. Se il salvataggio fallisce mostra un errore e non riprova in loop; gli elementi, i file, lo sfondo e la griglia cambiano la firma di salvataggio, mentre selezione, hover, scroll e zoom non la cambiano.",
+    "expectedTypes": [
+      "flowchart"
+    ],
+    "expectedTopType": "flowchart",
+    "mustMention": [
+      "autosave",
+      "flush",
+      "errore"
+    ]
+  },
+  {
+    "id": "flow-checkout",
+    "title": "Checkout e-commerce",
+    "source": "testo realistico sintetico",
+    "text": "Il cliente aggiunge prodotti al carrello e avvia il checkout. Il sistema verifica la disponibilità a magazzino: se un prodotto manca propone una sostituzione o l'annullamento. Se la disponibilità è confermata autorizza il pagamento; se il pagamento è rifiutato torna al carrello. Dopo il pagamento crea l'ordine, notifica il magazzino e invia la conferma.",
+    "expectedTypes": [
+      "flowchart",
+      "sequence"
+    ],
+    "expectedTopType": "flowchart",
+    "mustMention": [
+      "pagamento",
+      "magazzino",
+      "ordine"
+    ],
+    "expectedTopTypes": [
+      "flowchart",
+      "sequence"
+    ]
+  },
+  {
+    "id": "flow-content",
+    "title": "Approvazione contenuti",
+    "source": "testo realistico sintetico",
+    "text": "Un autore invia una bozza al revisore. Il revisore può approvare, chiedere modifiche o rifiutare. Se chiede modifiche il contenuto torna all'autore; se approva passa al publishing. Il publishing verifica i metadati: se mancano blocca la pubblicazione e notifica il redattore, altrimenti pubblica e archivia la versione.",
+    "expectedTypes": [
+      "flowchart",
+      "state"
+    ],
+    "expectedTopType": "flowchart",
+    "mustMention": [
+      "revisore",
+      "publishing",
+      "metadati"
+    ],
+    "expectedTopTypes": [
+      "flowchart",
+      "state"
+    ]
+  },
+  {
+    "id": "flow-incident",
+    "title": "Risposta a un incidente",
+    "source": "testo realistico sintetico",
+    "text": "Il monitoraggio rileva un'anomalia e apre un incidente. Il triage decide se è critico: se sì attiva il team on-call e isola il servizio; se no lo mette in coda. Dopo la mitigazione si verifica il ripristino; se il servizio è stabile si chiude l'incidente e si pianifica la postmortem, altrimenti si torna alla mitigazione.",
+    "expectedTypes": [
+      "flowchart",
+      "state"
+    ],
+    "expectedTopType": "flowchart",
+    "mustMention": [
+      "triage",
+      "on-call",
+      "postmortem"
+    ],
+    "expectedTopTypes": [
+      "flowchart",
+      "state"
+    ]
+  },
+  {
+    "id": "flow-support",
+    "title": "Escalation supporto",
+    "source": "testo realistico sintetico",
+    "text": "Il cliente scrive al bot di supporto. Se il bot risolve, chiude il ticket; altrimenti assegna il caso a un agente. L'agente può risolvere direttamente o escalare a uno specialista. Se lo specialista risolve, il ticket torna all'agente per la conferma e la chiusura; se serve un intervento tecnico, apre un ticket al team di prodotto.",
+    "expectedTypes": [
+      "flowchart"
+    ],
+    "expectedTopType": "flowchart",
+    "mustMention": [
+      "bot",
+      "agente",
+      "spec",
+      "ticket"
+    ]
+  },
+  {
+    "id": "seq-auth",
+    "title": "Autenticazione API",
+    "source": "testo realistico sintetico",
+    "text": "Il client invia credenziali al servizio di autenticazione. Il servizio valida la password, genera un access token e un refresh token e li restituisce. Il client chiama l'API delle risorse con il token. Se il token è scaduto l'API risponde 401; il client usa il refresh token per ottenere un nuovo access token e ripete la chiamata. Se il refresh token non è valido l'utente deve rifare il login.",
+    "expectedTypes": [
+      "sequence"
+    ],
+    "expectedTopType": "sequence",
+    "mustMention": [
+      "token",
+      "401",
+      "refresh"
+    ]
+  },
+  {
+    "id": "seq-payment",
+    "title": "Autorizzazione pagamento",
+    "source": "testo realistico sintetico",
+    "text": "Il cliente invia i dati di pagamento al merchant. Il merchant chiama il payment service, che a sua volta contatta la banca per l'autorizzazione. La banca risponde con approvazione o rifiuto. Il payment service restituisce l'esito al merchant, che conferma l'ordine al cliente. In caso di rifiuto il merchant propone un metodo alternativo.",
+    "expectedTypes": [
+      "sequence"
+    ],
+    "expectedTopType": "sequence",
+    "mustMention": [
+      "merchant",
+      "banca",
+      "autorizzazione"
+    ]
+  },
+  {
+    "id": "seq-order",
+    "title": "Ordine tra microservizi",
+    "source": "testo realistico sintetico",
+    "text": "Il gateway riceve la richiesta di ordine e chiama il servizio ordini. Il servizio ordini verifica la disponibilità con il servizio inventario, poi chiama il servizio pagamenti. Se il pagamento è approvato pubblica un evento di conferma; il servizio notifiche consuma l'evento e invia l'email al cliente. Se il pagamento fallisce il servizio ordini annulla la prenotazione di inventario.",
+    "expectedTypes": [
+      "sequence"
+    ],
+    "expectedTopType": "sequence",
+    "mustMention": [
+      "gateway",
+      "inventario",
+      "evento"
+    ]
+  },
+  {
+    "id": "seq-chat",
+    "title": "Consegna messaggi chat",
+    "source": "testo realistico sintetico",
+    "text": "Il client invia un messaggio al server. Il server assegna un identificativo, salva il messaggio e lo inoltra al client del destinatario. Il destinatario risponde con un acknowledgement. Il server marca il messaggio come consegnato e notifica il mittente. Se il destinatario è offline il server mantiene il messaggio in coda e lo consegna alla riconnessione.",
+    "expectedTypes": [
+      "sequence"
+    ],
+    "expectedTopType": "sequence",
+    "mustMention": [
+      "messaggio",
+      "consegna",
+      "ack"
+    ]
+  },
+  {
+    "id": "seq-cicd",
+    "title": "Pipeline CI/CD",
+    "source": "testo realistico sintetico",
+    "text": "Lo sviluppatore esegue il push sul repository. Il repository notifica la pipeline CI, che esegue build e test. Se i test passano la pipeline pubblica l'immagine nel registry e chiede al deploy service di aggiornare l'ambiente. Il deploy service verifica l'health check e risponde con successo o rollback. La pipeline notifica l'esito allo sviluppatore.",
+    "expectedTypes": [
+      "sequence"
+    ],
+    "expectedTopType": "sequence",
+    "mustMention": [
+      "pipeline",
+      "registry",
+      "health check"
+    ]
+  },
+  {
+    "id": "class-library",
+    "title": "Modello biblioteca",
+    "source": "testo realistico sintetico",
+    "text": "Il sistema è progettato con le classi Libro, Autore, Socio e Prestito. Libro ha attributi ISBN, titolo e disponibilità e metodi prestito() e restituzione(). Autore ha nome e nazionalità. Socio ha numero tessera e può avere più prestiti. La classe Prestito associa un Libro a un Socio e registra le date. Le relazioni sono associazioni con molteplicità.",
+    "expectedTypes": [
+      "class"
+    ],
+    "expectedTopType": "class",
+    "mustMention": [
+      "classe",
+      "metodi",
+      "Prestito"
+    ]
+  },
+  {
+    "id": "class-ecommerce",
+    "title": "Modello e-commerce",
+    "source": "testo realistico sintetico",
+    "text": "Il dominio è modellato con le classi Cliente, Ordine, RigaOrdine e Prodotto. Cliente ha email e indirizzo e il metodo effettuaOrdine(). Ordine contiene più oggetti RigaOrdine e ha stato e totale. RigaOrdine ha quantità e prezzoUnitario. Prodotto ha SKU, nome e disponibilità. Le classi usano associazioni e composizione, non tabelle.",
+    "expectedTypes": [
+      "class"
+    ],
+    "expectedTopType": "class",
+    "mustMention": [
+      "classi",
+      "Ordine",
+      "composizione"
+    ]
+  },
+  {
+    "id": "class-banking",
+    "title": "Modello bancario",
+    "source": "testo realistico sintetico",
+    "text": "Il modello a oggetti della banca comprende le classi Cliente, Conto, Movimento e Carta. Cliente può possedere più Conti; Conto ha iban, saldo e il metodo accredita(). Movimento ha data, importo e causale ed è contenuto nel Conto. Carta è associata a un Conto e ha un limite. Le relazioni usano associazione e composizione.",
+    "expectedTypes": [
+      "class"
+    ],
+    "expectedTopType": "class",
+    "mustMention": [
+      "modello a oggetti",
+      "Conto",
+      "Movimento"
+    ]
+  },
+  {
+    "id": "class-university",
+    "title": "Modello università",
+    "source": "testo realistico sintetico",
+    "text": "Il software universitario è progettato con le classi Studente, Docente, Corso e Iscrizione. Studente ha matricola e nome; Docente ha specializzazione. Corso ha codice e crediti e contiene più Iscrizioni. Iscrizione associa uno Studente a un Corso e registra anno e stato. Le classi espongono metodi per iscrivere() e verbalizzare().",
+    "expectedTypes": [
+      "class"
+    ],
+    "expectedTopType": "class",
+    "mustMention": [
+      "classi",
+      "Iscrizione",
+      "metodi"
+    ]
+  },
+  {
+    "id": "class-hospital",
+    "title": "Modello ospedale",
+    "source": "testo realistico sintetico",
+    "text": "Il dominio ospedaliero è modellato con le classi Paziente, Medico, Appuntamento e Prescrizione. Paziente ha codice fiscale e contatti. Medico ha specializzazione e può avere più Appuntamenti. Appuntamento associa Paziente e Medico e ha data e stanza. Prescrizione contiene farmaci e dosaggi ed è emessa da un Medico per un Paziente.",
+    "expectedTypes": [
+      "class"
+    ],
+    "expectedTopType": "class",
+    "mustMention": [
+      "classi",
+      "Medico",
+      "Prescrizione"
+    ]
+  },
+  {
+    "id": "state-document",
+    "title": "Ciclo del documento",
+    "source": "testo realistico sintetico",
+    "text": "Un documento nasce come bozza. Quando l'autore lo invia passa in revisione. In revisione può essere approvato e diventare pubblicato, oppure rifiutato e tornare in bozza. Un documento pubblicato può essere archiviato; dall'archivio può essere ripristinato come bozza. La cancellazione è consentita solo dalla bozza.",
+    "expectedTypes": [
+      "state"
+    ],
+    "expectedTopType": "state",
+    "mustMention": [
+      "bozza",
+      "revisione",
+      "archivio"
+    ]
+  },
+  {
+    "id": "state-order",
+    "title": "Stati dell'ordine",
+    "source": "testo realistico sintetico",
+    "text": "Un ordine viene creato e attende il pagamento. Quando il pagamento è autorizzato passa a pagato; se il pagamento fallisce torna in attesa o viene annullato. Un ordine pagato viene preparato e poi spedito. Dopo la consegna può essere chiuso; se il cliente apre un reso passa a restituito e infine a rimborsato.",
+    "expectedTypes": [
+      "state"
+    ],
+    "expectedTopType": "state",
+    "mustMention": [
+      "pagato",
+      "spedito",
+      "reso"
+    ]
+  },
+  {
+    "id": "state-subscription",
+    "title": "Ciclo abbonamento",
+    "source": "testo realistico sintetico",
+    "text": "Un abbonamento inizia in prova. Alla scadenza della prova diventa attivo se il pagamento riesce, altrimenti passa a scaduto. Un abbonamento attivo può essere cancellato dall'utente e resta valido fino alla fine del periodo. Se il pagamento fallisce durante il periodo passa a insolvente; dopo la sospensione può essere riattivato o scadere definitivamente.",
+    "expectedTypes": [
+      "state"
+    ],
+    "expectedTopType": "state",
+    "mustMention": [
+      "prova",
+      "attivo",
+      "insolvente"
+    ]
+  },
+  {
+    "id": "state-ticket",
+    "title": "Ciclo del ticket",
+    "source": "testo realistico sintetico",
+    "text": "Un ticket nasce come nuovo. Quando viene preso in carico passa ad aperto; se si attende una risposta del cliente passa in attesa. Dalla attesa può tornare aperto o essere risolto. Un ticket risolto può essere chiuso dal cliente o riaperto. Un ticket chiuso non può tornare aperto senza crearne uno nuovo.",
+    "expectedTypes": [
+      "state"
+    ],
+    "expectedTopType": "state",
+    "mustMention": [
+      "nuovo",
+      "aperto",
+      "risolto"
+    ]
+  },
+  {
+    "id": "state-device",
+    "title": "Ciclo del dispositivo",
+    "source": "testo realistico sintetico",
+    "text": "Un dispositivo viene registrato e passa in provisioning. Al termine del provisioning diventa attivo. Un dispositivo attivo può entrare in manutenzione e tornare attivo dopo l'intervento. Se la manutenzione fallisce viene dismesso. Un dispositivo dismesso non può essere riattivato; può solo essere smaltito.",
+    "expectedTypes": [
+      "state"
+    ],
+    "expectedTopType": "state",
+    "mustMention": [
+      "provisioning",
+      "manutenzione",
+      "dismesso"
+    ]
+  },
+  {
+    "id": "er-library",
+    "title": "Schema biblioteca",
+    "source": "testo realistico sintetico",
+    "text": "Il database di una biblioteca contiene libri, autori e prestiti. Ogni libro ha un ISBN univoco, un titolo e può avere più autori; un autore può scrivere più libri. Un prestito collega un libro a un socio, registra la data di inizio e la data di restituzione. Un socio può avere più prestiti, ma un libro può essere prestato a un solo socio alla volta.",
+    "expectedTypes": [
+      "er"
+    ],
+    "expectedTopType": "er",
+    "mustMention": [
+      "ISBN",
+      "prestito",
+      "socio"
+    ]
+  },
+  {
+    "id": "er-ecommerce",
+    "title": "Schema e-commerce",
+    "source": "testo realistico sintetico",
+    "text": "Il database contiene clienti, ordini, righe ordine e prodotti. Un cliente può effettuare più ordini; ogni ordine contiene una o più righe. Ogni riga fa riferimento a un prodotto e ha quantità e prezzo unitario. Un ordine ha stato, data e totale. Un prodotto può comparire in più righe e ha SKU, nome e disponibilità.",
+    "expectedTypes": [
+      "er"
+    ],
+    "expectedTopType": "er",
+    "mustMention": [
+      "SKU",
+      "riga",
+      "ordine"
+    ]
+  },
+  {
+    "id": "er-school",
+    "title": "Schema scuola",
+    "source": "testo realistico sintetico",
+    "text": "Il database della scuola ha studenti, corsi, docenti e iscrizioni. Uno studente può iscriversi a più corsi; un corso può avere più studenti. Ogni iscrizione collega uno studente a un corso e registra l'anno scolastico. Un docente tiene uno o più corsi. Ogni corso ha un codice univoco e un numero massimo di partecipanti.",
+    "expectedTypes": [
+      "er"
+    ],
+    "expectedTopType": "er",
+    "mustMention": [
+      "iscrizione",
+      "docente",
+      "codice"
+    ]
+  },
+  {
+    "id": "er-hospital",
+    "title": "Schema ospedale",
+    "source": "testo realistico sintetico",
+    "text": "Il database contiene pazienti, medici, appuntamenti e prescrizioni. Un paziente può prenotare più appuntamenti; ogni appuntamento è assegnato a un medico. Un medico può emettere più prescrizioni. Una prescrizione è collegata a un paziente e a un medico e contiene più farmaci con dosaggio e frequenza.",
+    "expectedTypes": [
+      "er"
+    ],
+    "expectedTopType": "er",
+    "mustMention": [
+      "paziente",
+      "prescrizione",
+      "dosaggio"
+    ]
+  },
+  {
+    "id": "er-hr",
+    "title": "Schema risorse umane",
+    "source": "testo realistico sintetico",
+    "text": "Il database aziendale contiene dipendenti, reparti, progetti e assegnazioni. Ogni dipendente appartiene a un reparto; un reparto ha più dipendenti. Un dipendente può essere assegnato a più progetti e un progetto può avere più dipendenti. L'assegnazione registra ruolo e percentuale di impegno. Ogni progetto ha un codice e un responsabile.",
+    "expectedTypes": [
+      "er"
+    ],
+    "expectedTopType": "er",
+    "mustMention": [
+      "dipendente",
+      "reparto",
+      "assegnazione"
+    ]
+  },
+  {
+    "id": "gantt-launch",
+    "title": "Piano di lancio",
+    "source": "testo realistico sintetico",
+    "text": "Il lancio del prodotto prevede la ricerca utente dal 3 al 14 marzo, il prototipo dal 15 marzo al 4 aprile e i test di usabilità dal 7 al 18 aprile. Il prototipo dipende dalla ricerca; i test dipendono dal prototipo. La campagna marketing parte il 21 aprile e il rilascio è previsto per il 5 maggio. La retrospettiva si tiene il 12 maggio.",
+    "expectedTypes": [
+      "gantt",
+      "timeline"
+    ],
+    "expectedTopType": "gantt",
+    "mustMention": [
+      "ricerca",
+      "prototipo",
+      "rilascio"
+    ],
+    "mustNotMention": [
+      "2024",
+      "2025"
+    ]
+  },
+  {
+    "id": "gantt-website",
+    "title": "Rifacimento sito",
+    "source": "testo realistico sintetico",
+    "text": "Il rifacimento del sito inizia con l'audit dei contenuti dal 5 al 16 gennaio, seguito dalla definizione della nuova architettura dal 19 al 30 gennaio. I wireframe vanno dal 2 al 13 febbraio; lo sviluppo frontend dal 16 febbraio al 20 marzo. Il QA occupa la settimana dal 23 al 27 marzo e il lancio è previsto il 30 marzo.",
+    "expectedTypes": [
+      "gantt",
+      "timeline"
+    ],
+    "expectedTopType": "gantt",
+    "mustMention": [
+      "audit",
+      "wireframe",
+      "lancio"
+    ],
+    "mustNotMention": [
+      "2024",
+      "2025"
+    ]
+  },
+  {
+    "id": "gantt-migration",
+    "title": "Migrazione database",
+    "source": "testo realistico sintetico",
+    "text": "La migrazione del database prevede l'inventario degli schemi dal 1 al 10 aprile, un pilot su due servizi dal 13 al 24 aprile e la migrazione completa dal 27 aprile al 15 maggio. La validazione dei dati va dal 18 al 22 maggio e il cutover è previsto il 29 maggio. Il rollback deve essere pronto entro il 22 maggio.",
+    "expectedTypes": [
+      "gantt",
+      "timeline"
+    ],
+    "expectedTopType": "gantt",
+    "mustMention": [
+      "pilot",
+      "cutover",
+      "rollback"
+    ],
+    "mustNotMention": [
+      "2024",
+      "2025"
+    ]
+  },
+  {
+    "id": "gantt-conference",
+    "title": "Organizzazione conferenza",
+    "source": "testo realistico sintetico",
+    "text": "L'organizzazione della conferenza parte con la scelta della sede dal 1 al 15 febbraio. Il bando per relatori va dal 16 febbraio al 31 marzo; la selezione degli speaker dal 1 al 10 aprile. La campagna biglietti va dal 15 aprile al 15 maggio. L'evento si tiene il 5 e 6 giugno, con allestimento il 4 giugno.",
+    "expectedTypes": [
+      "gantt",
+      "timeline"
+    ],
+    "expectedTopType": "gantt",
+    "mustMention": [
+      "bando",
+      "speaker",
+      "biglietti"
+    ],
+    "mustNotMention": [
+      "2024",
+      "2025"
+    ]
+  },
+  {
+    "id": "gantt-release",
+    "title": "Rilascio applicazione",
+    "source": "testo realistico sintetico",
+    "text": "Il rilascio dell'app prevede il feature freeze l'8 settembre, la beta chiusa dal 9 al 22 settembre e la correzione dei bug dal 23 settembre al 4 ottobre. La revisione degli store va dal 7 al 18 ottobre. Il rilascio pubblico è previsto il 21 ottobre, con monitoraggio fino al 31 ottobre.",
+    "expectedTypes": [
+      "gantt",
+      "timeline"
+    ],
+    "expectedTopType": "gantt",
+    "mustMention": [
+      "feature freeze",
+      "beta",
+      "store"
+    ],
+    "mustNotMention": [
+      "2024",
+      "2025"
+    ]
+  },
+  {
+    "id": "pie-traffic",
+    "title": "Canali di traffico",
+    "source": "testo realistico sintetico",
+    "text": "Il traffico mensile del sito è così distribuito: ricerca organica 45%, referral 20%, campagne a pagamento 18%, social 12%, email 5%. La somma è 100%. La ricerca organica è il canale principale; le campagne a pagamento hanno il costo per acquisizione più alto.",
+    "expectedTypes": [
+      "pie"
+    ],
+    "expectedTopType": "pie",
+    "mustMention": [
+      "organica",
+      "referral",
+      "email"
+    ]
+  },
+  {
+    "id": "pie-budget",
+    "title": "Riparto budget",
+    "source": "testo realistico sintetico",
+    "text": "Il budget annuale è ripartito tra prodotto 35%, marketing 25%, vendite 20%, operazioni 12%, ricerca e sviluppo 8%. Il budget totale è 1,2 milioni di euro. Product e marketing insieme rappresentano il 60% delle risorse. Operazioni include infrastruttura e supporto.",
+    "expectedTypes": [
+      "pie"
+    ],
+    "expectedTopType": "pie",
+    "mustMention": [
+      "prodotto",
+      "marketing",
+      "operazioni"
+    ]
+  },
+  {
+    "id": "pie-energy",
+    "title": "Mix energetico",
+    "source": "testo realistico sintetico",
+    "text": "Il mix energetico annuale è composto da solare 32%, eolico 28%, idroelettrico 18%, gas 15%, nucleare 5%, altro 2%. Le rinnovabili coprono il 78% della produzione. Il gas resta la principale fonte non rinnovabile. Le perdite di rete sono escluse dal mix.",
+    "expectedTypes": [
+      "pie"
+    ],
+    "expectedTopType": "pie",
+    "mustMention": [
+      "solare",
+      "eolico",
+      "gas"
+    ]
+  },
+  {
+    "id": "pie-segments",
+    "title": "Segmenti clienti",
+    "source": "testo realistico sintetico",
+    "text": "La base clienti è composta da professionisti 40%, piccole imprese 30%, grandi imprese 18%, enti pubblici 8%, altro 4%. I professionisti sono il segmento più numeroso, ma le grandi imprese generano il 45% dei ricavi. I ricavi non coincidono con il numero di clienti.",
+    "expectedTypes": [
+      "pie"
+    ],
+    "expectedTopType": "pie",
+    "mustMention": [
+      "professionisti",
+      "imprese",
+      "ricavi"
+    ]
+  },
+  {
+    "id": "pie-time",
+    "title": "Uso del tempo",
+    "source": "testo realistico sintetico",
+    "text": "Il tempo settimanale del team è distribuito tra sviluppo 42%, riunioni 18%, supporto 15%, code review 10%, documentazione 8%, amministrazione 7%. Lo sviluppo è l'attività principale. Le riunioni occupano quasi un quinto del tempo.",
+    "expectedTypes": [
+      "pie"
+    ],
+    "expectedTopType": "pie",
+    "mustMention": [
+      "sviluppo",
+      "riunioni",
+      "supporto"
+    ]
+  },
+  {
+    "id": "mind-risk",
+    "title": "Tassonomia dei rischi",
+    "source": "testo realistico sintetico",
+    "text": "La gestione del rischio si divide in tre famiglie. I rischi strategici includono mercato e concorrenza. I rischi operativi includono processi, persone e tecnologia. I rischi finanziari includono liquidità, credito e tasso. Ogni famiglia ha indicatori e un responsabile. I rischi strategici sono rivisti dal consiglio, quelli operativi dal comitato interno, quelli finanziari dal tesoriere.",
+    "expectedTypes": [
+      "mindmap"
+    ],
+    "expectedTopType": "mindmap",
+    "mustMention": [
+      "strategici",
+      "operativi",
+      "finanziari"
+    ]
+  },
+  {
+    "id": "mind-rag",
+    "title": "Concetti di RAG",
+    "source": "testo realistico sintetico",
+    "text": "La mappa concettuale di RAG si organizza in una gerarchia. Il nodo radice RAG ha tre aree: indice, retrieval e generazione. Indice contiene chunk ed embedding. Retrieval contiene retriever e reranker. Generazione contiene contesto, modello e risposta. Trasversali sono valutazione e sicurezza: la prima include pertinenza e fedeltà, la seconda filtri e protezione da prompt injection.",
+    "expectedTypes": [
+      "mindmap"
+    ],
+    "expectedTopType": "mindmap",
+    "mustMention": [
+      "gerarchia",
+      "indice",
+      "retrieval"
+    ]
+  },
+  {
+    "id": "mind-product",
+    "title": "Pilastri di prodotto",
+    "source": "testo realistico sintetico",
+    "text": "La mappa dei pilastri di prodotto è una gerarchia a quattro rami: acquisizione, attivazione, retention e monetizzazione. Acquisizione contiene SEO, contenuti e referral. Attivazione contiene onboarding, template e supporto iniziale. Retention contiene notifiche, abitudini e qualità. Monetizzazione contiene piani, upgrade e riduzione del churn. Ogni ramo ha sottocategorie.",
+    "expectedTypes": [
+      "mindmap"
+    ],
+    "expectedTopType": "mindmap",
+    "mustMention": [
+      "gerarchia",
+      "retention",
+      "sottocategorie"
+    ]
+  },
+  {
+    "id": "mind-biology",
+    "title": "Classificazione biologica",
+    "source": "testo realistico sintetico",
+    "text": "La classificazione biologica è una gerarchia tassonomica: dominio, regno, phylum, classe tassonomica, ordine, famiglia, genere e specie. I dominii principali sono batteri, archaea ed eucarioti. Gli eucarioti si ramificano in animali, piante, funghi e protisti. Ogni livello contiene sottolivelli; la specie è il nodo più specifico.",
+    "expectedTypes": [
+      "mindmap"
+    ],
+    "expectedTopType": "mindmap",
+    "mustMention": [
+      "gerarchia",
+      "dominio",
+      "specie"
+    ]
+  },
+  {
+    "id": "mind-knowledge",
+    "title": "Aree di conoscenza",
+    "source": "testo realistico sintetico",
+    "text": "Le aree di conoscenza di un progetto formano una mappa gerarchica: scope, tempo, costo, qualità, rischio, persone e comunicazione. Scope contiene requisiti e confini. Tempo contiene attività, dipendenze e milestone. Costo contiene budget e controllo. Rischio contiene identificazione, valutazione e risposta. Persone contiene ruoli e responsabilità.",
+    "expectedTypes": [
+      "mindmap"
+    ],
+    "expectedTopType": "mindmap",
+    "mustMention": [
+      "gerarchia",
+      "scope",
+      "rischio"
+    ]
+  },
+  {
+    "id": "time-company",
+    "title": "Storia dell'azienda",
+    "source": "testo realistico sintetico",
+    "text": "L'azienda nasce nel 2012 come studio di consulenza. Nel 2015 apre il primo ufficio a Milano. Nel 2018 lancia il primo prodotto SaaS. Nel 2020 supera cento dipendenti. Nel 2022 apre la sede di Berlino. Nel 2024 acquisisce un concorrente. Nel 2026 inaugura il nuovo centro di ricerca.",
+    "expectedTypes": [
+      "timeline",
+      "gantt"
+    ],
+    "expectedTopType": "timeline",
+    "mustMention": [
+      "2012",
+      "2020",
+      "2026"
+    ]
+  },
+  {
+    "id": "time-ai",
+    "title": "Tappe dell'IA",
+    "source": "testo realistico sintetico",
+    "text": "Nel 1950 Turing propone il test di intelligenza. Nel 1956 si tiene la conferenza di Dartmouth. Nel 1997 Deep Blue batte Kasparov. Nel 2012 AlexNet vince ImageNet. Nel 2017 viene pubblicato il paper Transformer. Nel 2022 arrivano i modelli generativi di massa. Nel 2026 i modelli multimodali sono diffusi.",
+    "expectedTypes": [
+      "timeline"
+    ],
+    "expectedTopType": "timeline",
+    "mustMention": [
+      "1950",
+      "2017",
+      "2022"
+    ]
+  },
+  {
+    "id": "time-project",
+    "title": "Fasi del progetto",
+    "source": "testo realistico sintetico",
+    "text": "La cronologia del progetto è scandita da tappe: a gennaio la discovery, a febbraio l'architettura, a marzo l'inizio dello sviluppo, ad aprile i test di integrazione, a maggio la beta, a giugno la raccolta feedback, a luglio il rilascio e ad agosto il monitoraggio. Non sono indicate durate o dipendenze, solo la successione degli eventi nel tempo.",
+    "expectedTypes": [
+      "timeline"
+    ],
+    "expectedTopType": "timeline",
+    "mustMention": [
+      "cronologia",
+      "tappe",
+      "rilascio"
+    ]
+  },
+  {
+    "id": "time-versions",
+    "title": "Versioni del prodotto",
+    "source": "testo realistico sintetico",
+    "text": "La versione 1.0 esce nel 2019 con le funzioni base. La 2.0 nel 2021 introduce la collaborazione. La 3.0 nel 2023 aggiunge il supporto mobile. La 3.5 nel 2024 porta il tema scuro. La 4.0 nel 2025 introduce l'AI. La 4.2 nel 2026 aggiunge l'integrazione con i calendari.",
+    "expectedTypes": [
+      "timeline"
+    ],
+    "expectedTopType": "timeline",
+    "mustMention": [
+      "1.0",
+      "3.0",
+      "4.0"
+    ]
+  },
+  {
+    "id": "time-career",
+    "title": "Percorso professionale",
+    "source": "testo realistico sintetico",
+    "text": "Nel 2016 il protagonista inizia come sviluppatore junior. Nel 2018 diventa sviluppatore full stack. Nel 2020 assume il ruolo di tech lead. Nel 2022 passa a engineering manager. Nel 2024 diventa responsabile di platform. Nel 2026 entra nel comitato tecnico aziendale.",
+    "expectedTypes": [
+      "timeline"
+    ],
+    "expectedTopType": "timeline",
+    "mustMention": [
+      "2016",
+      "2020",
+      "2024"
+    ]
+  },
+  {
+    "id": "journey-patient",
+    "title": "Percorso del paziente",
+    "source": "testo realistico sintetico",
+    "text": "Il paziente prenota una visita online, compila il questionario e riceve la conferma. In ambulatorio si registra alla reception, attende il triage e incontra lo specialista. Dopo la visita ritira il referto e prenota eventuali esami di controllo. Il punteggio di soddisfazione è alto nella prenotazione, scende durante l'attesa e risale dopo il colloquio con lo specialista.",
+    "expectedTypes": [
+      "journey"
+    ],
+    "expectedTopType": "journey",
+    "mustMention": [
+      "prenota",
+      "triage",
+      "soddisfazione"
+    ]
+  },
+  {
+    "id": "journey-purchase",
+    "title": "Acquisto online",
+    "source": "testo realistico sintetico",
+    "text": "Il percorso esperienziale del cliente inizia dalla scoperta del prodotto tramite un annuncio. Poi confronta le alternative, aggiunge al carrello, sceglie la spedizione e paga. Dopo l'acquisto riceve la conferma, segue il tracking e ritira il pacco. Il punteggio di soddisfazione è alto nella scoperta, cala se il pagamento è complicato e risale alla consegna.",
+    "expectedTypes": [
+      "journey"
+    ],
+    "expectedTopType": "journey",
+    "mustMention": [
+      "percorso",
+      "soddisfazione",
+      "tracking"
+    ]
+  },
+  {
+    "id": "journey-onboarding",
+    "title": "Onboarding SaaS",
+    "source": "testo realistico sintetico",
+    "text": "Il nuovo utente arriva dalla landing page, crea l'account e completa la verifica email. Poi sceglie un template, invita un collega e crea il primo progetto. Riceve un suggerimento contestuale e un'email di follow-up. La soddisfazione è alta alla registrazione, cala se l'invito non arriva e risale dopo il primo risultato.",
+    "expectedTypes": [
+      "journey"
+    ],
+    "expectedTopType": "journey",
+    "mustMention": [
+      "account",
+      "template",
+      "invito"
+    ]
+  },
+  {
+    "id": "journey-restaurant",
+    "title": "Esperienza al ristorante",
+    "source": "testo realistico sintetico",
+    "text": "Il cliente cerca il ristorante, prenota un tavolo e riceve la conferma. All'arrivo viene accolto, consulta il menu e ordina. Durante la cena valuta servizio e qualità; alla fine paga e lascia una recensione. La soddisfazione è alta alla prenotazione, scende se l'attesa è lunga e risale se il servizio è attento.",
+    "expectedTypes": [
+      "journey"
+    ],
+    "expectedTopType": "journey",
+    "mustMention": [
+      "prenota",
+      "menu",
+      "recensione"
+    ]
+  },
+  {
+    "id": "journey-loan",
+    "title": "Richiesta di mutuo",
+    "source": "testo realistico sintetico",
+    "text": "Il cliente simula un mutuo online, compila la domanda e carica i documenti. La banca verifica i requisiti e chiede integrazioni. Dopo l'approvazione il cliente firma e riceve l'erogazione. La soddisfazione è alta nella simulazione, cala durante le richieste di documenti e risale alla firma.",
+    "expectedTypes": [
+      "journey"
+    ],
+    "expectedTopType": "journey",
+    "mustMention": [
+      "simula",
+      "documenti",
+      "firma"
+    ]
+  },
+  {
+    "id": "quad-initiatives",
+    "title": "Priorità iniziative",
+    "source": "testo realistico sintetico",
+    "text": "Valutiamo quattro iniziative per impatto e sforzo. Migliorare l'onboarding ha impatto alto e sforzo basso. Riscrivere il motore di ricerca ha impatto alto ma sforzo molto alto. Ridisegnare le impostazioni ha impatto medio e sforzo medio. Aggiungere temi personalizzati ha impatto basso e sforzo basso. Vogliamo partire dalle quick win e rimandare le iniziative troppo costose.",
+    "expectedTypes": [
+      "quadrant"
+    ],
+    "expectedTopType": "quadrant",
+    "mustMention": [
+      "onboarding",
+      "sforzo",
+      "quick win"
+    ]
+  },
+  {
+    "id": "quad-risk",
+    "title": "Matrice dei rischi",
+    "source": "testo realistico sintetico",
+    "text": "Valutiamo i rischi per probabilità e impatto. La perdita del fornitore principale ha probabilità media e impatto alto. Il guasto del database ha probabilità bassa e impatto molto alto. La rotazione del personale ha probabilità alta e impatto medio. La scadenza di un certificato ha probabilità bassa e impatto basso. I rischi ad alto impatto vanno mitigati subito.",
+    "expectedTypes": [
+      "quadrant"
+    ],
+    "expectedTopType": "quadrant",
+    "mustMention": [
+      "probabilità",
+      "impatto",
+      "certificato"
+    ]
+  },
+  {
+    "id": "quad-features",
+    "title": "Valore e sforzo",
+    "source": "testo realistico sintetico",
+    "text": "Le funzionalità candidati sono valutate per valore e sforzo. Export PDF ha valore alto e sforzo basso. Editing collaborativo ha valore alto e sforzo molto alto. Tema scuro ha valore medio e sforzo basso. Integrazione con il calendario ha valore medio e sforzo medio. Le quick win vanno prima delle scommesse costose.",
+    "expectedTypes": [
+      "quadrant"
+    ],
+    "expectedTopType": "quadrant",
+    "mustMention": [
+      "valore",
+      "sforzo",
+      "quick win"
+    ]
+  },
+  {
+    "id": "quad-suppliers",
+    "title": "Valutazione fornitori",
+    "source": "testo realistico sintetico",
+    "text": "I fornitori sono valutati per costo e qualità. Il fornitore A ha costo basso e qualità alta. Il fornitore B ha costo alto e qualità molto alta. Il fornitore C ha costo medio e qualità media. Il fornitore D ha costo basso e qualità bassa. Preferiamo i fornitori nel quadrante qualità alta/costo basso.",
+    "expectedTypes": [
+      "quadrant"
+    ],
+    "expectedTopType": "quadrant",
+    "mustMention": [
+      "costo",
+      "qualità",
+      "fornitore"
+    ]
+  },
+  {
+    "id": "quad-channels",
+    "title": "Canali marketing",
+    "source": "testo realistico sintetico",
+    "text": "I canali sono valutati per costo e copertura. Il content marketing ha costo medio e copertura alta. Gli Ads hanno costo alto e copertura alta. Il referral ha costo basso e copertura media. I social organici hanno costo basso e copertura media. I canali ad alta copertura e costo contenuto sono prioritari.",
+    "expectedTypes": [
+      "quadrant"
+    ],
+    "expectedTopType": "quadrant",
+    "mustMention": [
+      "costo",
+      "copertura",
+      "referral"
+    ]
+  },
+  {
+    "id": "xy-revenue",
+    "title": "Ricavi mensili",
+    "source": "testo realistico sintetico",
+    "text": "I ricavi mensili del 2026 sono: gennaio 120, febbraio 145, marzo 138, aprile 170, maggio 185, giugno 210 (unità: migliaia di euro). I costi nello stesso periodo sono 90, 95, 92, 110, 118, 125. Il margine cresce da 30 a 85. Il picco dei ricavi è a giugno; il mese con il margine più basso è gennaio.",
+    "expectedTypes": [
+      "xychart"
+    ],
+    "expectedTopType": "xychart",
+    "mustMention": [
+      "120",
+      "210",
+      "giugno"
+    ]
+  },
+  {
+    "id": "xy-traffic",
+    "title": "Traffico sito",
+    "source": "testo realistico sintetico",
+    "text": "Il traffico mensile del sito è 12.000 visite a gennaio, 14.500 a febbraio, 13.800 a marzo, 17.000 ad aprile, 18.500 a maggio e 21.000 a giugno. Le conversioni sono 2,1%, 2,3%, 2,0%, 2,6%, 2,8% e 3,0%. Il tasso di conversione cresce con il traffico, ma non in modo lineare.",
+    "expectedTypes": [
+      "xychart"
+    ],
+    "expectedTopType": "xychart",
+    "mustMention": [
+      "visite",
+      "conversioni",
+      "giugno"
+    ]
+  },
+  {
+    "id": "xy-temperature",
+    "title": "Temperature",
+    "source": "testo realistico sintetico",
+    "text": "Le temperature medie di una settimana sono 12, 14, 13, 17, 19, 18 e 21 gradi. Le minime sono 6, 7, 5, 9, 11, 10 e 12. Le massime sono 17, 19, 18, 22, 24, 23 e 26. Il giorno più caldo è domenica; il più freddo è mercoledì.",
+    "expectedTypes": [
+      "xychart"
+    ],
+    "expectedTopType": "xychart",
+    "mustMention": [
+      "temperature",
+      "21",
+      "settimana"
+    ]
+  },
+  {
+    "id": "xy-quarter",
+    "title": "Vendite trimestrali",
+    "source": "testo realistico sintetico",
+    "text": "Le vendite trimestrali del 2026 sono 320, 380, 410 e 470 migliaia di euro. Gli obiettivi erano 300, 360, 400 e 450. Il superamento dell'obiettivo è stato del 6,7%, 5,6%, 2,5% e 4,4%. Il quarto trimestre ha il valore più alto e il maggiore scostamento positivo.",
+    "expectedTypes": [
+      "xychart"
+    ],
+    "expectedTopType": "xychart",
+    "mustMention": [
+      "320",
+      "470",
+      "obiettivi"
+    ]
+  },
+  {
+    "id": "xy-downloads",
+    "title": "Download applicazione",
+    "source": "testo realistico sintetico",
+    "text": "I download mensili dell'app sono 8.000 a gennaio, 9.200 a febbraio, 8.700 a marzo, 11.500 ad aprile, 12.800 a maggio e 14.000 a giugno. Le installazioni attive sono 70% dei download. Il picco è a giugno; marzo è l'unico mese in calo rispetto al precedente.",
+    "expectedTypes": [
+      "xychart"
+    ],
+    "expectedTopType": "xychart",
+    "mustMention": [
+      "8000",
+      "14000",
+      "giugno"
+    ]
+  }
+]

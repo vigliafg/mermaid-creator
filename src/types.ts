@@ -44,6 +44,8 @@ export interface Diagram {
   diagramType: string;
   inLibrary: boolean;
   favorite: boolean;
+  /** -1 = non utile, 0 = nessun feedback, 1 = utile. */
+  feedback: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -73,6 +75,18 @@ export interface DiagramBoard {
 }
 
 export type BoardQuality = "semantic" | "generic" | "image";
+
+/** Libreria Excalidraw globale, condivisa da tutte le lavagne. */
+export interface BoardLibrary {
+  itemsJson: string;
+  updatedAt: number;
+}
+
+/** Cache del catalogo delle librerie della comunità. */
+export interface BoardLibraryCatalog {
+  catalogJson: string;
+  fetchedAt: number;
+}
 
 export interface ModelInfo {
   id: string;
@@ -125,6 +139,7 @@ export interface ChatUsage {
 
 export type ChatEvent =
   | { event: "started"; data: { userMessageId: string; assistantMessageId: string } }
+  | { event: "status"; data: { message: string } }
   | { event: "delta"; data: { text: string } }
   | { event: "done"; data: { messageId: string; content: string; usage: ChatUsage | null } }
   | { event: "error"; data: { message: string; partial: string } }
@@ -138,6 +153,7 @@ export interface SendRequest {
   targetDiagramId: string | null;
   targetTheme: string | null;
   attachmentIds: string[];
+  currentDate: string;
 }
 
 export interface AttachmentImport {

@@ -2,6 +2,8 @@ mod commands;
 mod db;
 mod models;
 mod openrouter;
+mod prompts;
+mod research;
 mod secrets;
 mod state;
 
@@ -60,6 +62,8 @@ pub fn run() {
             commands::attachment_delete,
             commands::chat_send,
             commands::chat_cancel,
+            commands::message_update_content,
+            commands::diagram_repair,
             commands::diagrams_list,
             commands::library_list,
             commands::diagram_get,
@@ -67,12 +71,17 @@ pub fn run() {
             commands::diagram_save_version,
             commands::diagram_restore,
             commands::diagram_set_flags,
+            commands::diagram_set_feedback,
             commands::diagram_delete,
             commands::diagram_versions,
             commands::board_get,
             commands::board_create,
             commands::board_save,
             commands::board_delete,
+            commands::board_library_load,
+            commands::board_library_save,
+            commands::board_library_catalog_load,
+            commands::board_library_catalog_save,
             commands::save_file,
             commands::app_info,
         ])

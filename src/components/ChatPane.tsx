@@ -9,6 +9,8 @@ import {
   Square,
   Star,
   Target,
+  ThumbsDown,
+  ThumbsUp,
   Workflow,
   X,
 } from "lucide-react";
@@ -106,6 +108,7 @@ function MessageBubble({ message }: { message: Message }) {
   const diagrams = useApp((s) => s.diagrams);
   const selectDiagram = useApp((s) => s.selectDiagram);
   const openBoardFor = useApp((s) => s.openBoardFor);
+  const setDiagramFeedback = useApp((s) => s.setDiagramFeedback);
   if (message.status === "streaming") return null;
   const isUser = message.role === "user";
   const messageDiagrams = diagrams.filter((diagram) => diagram.messageId === message.id);
@@ -172,13 +175,35 @@ function MessageBubble({ message }: { message: Message }) {
                   </span>
                   <span className="diagram-card-open">Apri</span>
                 </button>
-                <button
-                  className="diagram-card-board"
-                  title="Apri la lavagna Excalidraw di questo diagramma"
-                  onClick={() => void openBoardFor(diagram.id)}
-                >
-                  Lavagna
-                </button>
+                <div className="diagram-card-side">
+                  <button
+                    className="diagram-card-board"
+                    title="Apri la lavagna Excalidraw di questo diagramma"
+                    onClick={() => void openBoardFor(diagram.id)}
+                  >
+                    Lavagna
+                  </button>
+                  <div className="diagram-card-vote" aria-label="Feedback sulla vista">
+                    <button
+                      className={`diagram-vote ${diagram.feedback === 1 ? "active up" : ""}`}
+                      title="Vista utile"
+                      aria-label="Vista utile"
+                      aria-pressed={diagram.feedback === 1}
+                      onClick={() => void setDiagramFeedback(diagram.id, 1)}
+                    >
+                      <ThumbsUp size={12} />
+                    </button>
+                    <button
+                      className={`diagram-vote ${diagram.feedback === -1 ? "active down" : ""}`}
+                      title="Vista non utile"
+                      aria-label="Vista non utile"
+                      aria-pressed={diagram.feedback === -1}
+                      onClick={() => void setDiagramFeedback(diagram.id, -1)}
+                    >
+                      <ThumbsDown size={12} />
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -206,6 +231,7 @@ export function ChatPane() {
   const settings = useApp((s) => s.settings);
   const streaming = useApp((s) => s.streaming);
   const streamText = useApp((s) => s.streamText);
+  const chatStatus = useApp((s) => s.chatStatus);
   const sendMessage = useApp((s) => s.sendMessage);
   const cancelStream = useApp((s) => s.cancelStream);
   const attachFiles = useApp((s) => s.attachFiles);
@@ -340,7 +366,11 @@ export function ChatPane() {
         {streaming && (
           <div className="message-row assistant">
             <div className="message-bubble assistant-bubble streaming-bubble">
-              {streamText ? <Markdown content={streamText} /> : <div className="typing">Sto pensando…</div>}
+              {streamText ? (
+                <Markdown content={streamText} />
+              ) : (
+                <div className="typing">{chatStatus || "Sto pensando…"}</div>
+              )}
               <div className="streaming-line">
                 <Loader2 size={13} className="spin" /> generazione in corso
               </div>

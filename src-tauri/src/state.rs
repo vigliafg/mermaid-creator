@@ -5,11 +5,13 @@ use std::sync::Mutex;
 use rusqlite::Connection;
 use tokio_util::sync::CancellationToken;
 
+use crate::research;
 use crate::secrets;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
     pub http: reqwest::Client,
+    pub research_http: reqwest::Client,
     pub cancels: Mutex<HashMap<String, CancellationToken>>,
     pub memory_key: Mutex<Option<String>>,
     pub data_dir: PathBuf,
@@ -25,6 +27,7 @@ impl AppState {
         Self {
             db: Mutex::new(db),
             http,
+            research_http: research::build_client(),
             cancels: Mutex::new(HashMap::new()),
             memory_key: Mutex::new(None),
             data_dir,

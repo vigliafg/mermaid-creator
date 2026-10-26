@@ -1904,6 +1904,63 @@ button:disabled {
   gap: 5px;
 }
 
+.onboarding-model-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 82%, var(--accent-soft));
+}
+
+.onboarding-model-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.onboarding-model-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.onboarding-model-main strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-model-main .muted {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.onboarding-model-card .btn {
+  flex: none;
+}
+
+.onboarding-model-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
 .boot-screen {
   height: 100vh;
   display: flex;

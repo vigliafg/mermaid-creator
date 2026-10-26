@@ -135,6 +135,184 @@ export function extractMermaidBlocks(
   return out;
 }
 
+/** Rimuove un eventuale recinto markdown dalla risposta del correttore. */
+export function cleanMermaidSource(value: string): string {
+  const text = value.trim();
+  const fenced = text.match(/```(?:mermaid|mmd)?\s*\r?\n([\s\S]*?)```/i);
+  if (fenced) return fenced[1].trim();
+  if (!text.startsWith("```")) return text;
+  const lines = text.split(/\r?\n/);
+  if (lines[0]?.trim().startsWith("```")) lines.shift();
+  if (lines[lines.length - 1]?.trim().startsWith("```")) lines.pop();
+  return lines.join("\n").trim();
+}
+
+/**
+ * Ultima spiaggia per sequenceDiagram: rimuove le attivazioni `+`/`-` dalle
+ * frecce. Pele/Mermaid a volte rifiutano deattivazioni di partecipanti non
+ * attivi; senza marker il diagramma resta leggibile e valido.
+ */
+export function simplifySequenceActivations(source: string): string {
+  return source.replace(/(-->>|->>|-->|->|--x|--\)|-\))([+-])/g, "$1");
+}
+
+/**
+ * Ultima spiaggia per xychart-beta: se una serie contiene etichette testuali
+ * (`line [Ricavi, 120, 145]`) tiene solo i numeri, che è la sintassi accettata.
+ */
+export function simplifyXYChartSeries(source: string): string {
+  if (!/^\s*xychart-beta/m.test(source)) return source;
+  const numbersFrom = (body: string): string[] =>
+    body
+      .split(/[,\s]+/)
+      .map((value) => value.trim().replace(/[€$£%]/g, ""))
+      .map((value) => {
+        if (/^\d{1,3}(?:\.\d{3})+$/.test(value)) return value.replace(/\./g, "");
+        if (/^\d{1,3}(?:,\d{3})+$/.test(value)) return value.replace(/,/g, "");
+        return value.replace("_", "").replace(",", ".");
+      })
+      .filter((value) => /^-?\d+(?:\.\d+)?$/.test(value));
+  return source
+    .replace(
+      /^(\s*(?:line|bar)\s+)\[([^\]]*)\][^\n]*/gm,
+      (full, prefix: string, body: string) => {
+        const numbers = numbersFrom(body);
+        return numbers.length >= 2 ? `${prefix}[${numbers.join(", ")}]` : full;
+      },
+    )
+    .replace(
+      /^(\s*(?:line|bar)\s+)"[^"]*"\s+([^\n]+)/gm,
+      (full, prefix: string, body: string) => {
+        const numbers = numbersFrom(body);
+        return numbers.length >= 2 ? `${prefix}[${numbers.join(", ")}]` : full;
+      },
+    );
+}
+
+/**
+ * Ultima spiaggia per quadrantChart: rimuove le virgolette dai nomi dei punti.
+ * Mermaid accetta `Nome: [0.2, 0.8]`; le virgolette sono la causa più comune
+ * dell'errore di parsing.
+ */
+export function simplifyQuadrantLabels(source: string): string {
+  if (!/^\s*quadrantChart/m.test(source)) return source;
+  return source
+    .replace(/^(\s*)point\s+/gm, "$1")
+    .replace(
+      /^(\s*)"([^"]+)"\s*:\s*\[([^\]]+)\]/gm,
+      (_full, indent: string, label: string, body: string) =>
+        `${indent}${label}: [${body.trim()}]`,
+    )
+    .replace(/\[([^\]]+)\]/g, (full, body: string) => {
+      const normalized = body
+        .split(",")
+        .map((value) => value.trim().replace(/^([01])\.0$/, "$1"))
+        .join(", ");
+      return `[${normalized}]`;
+    });
+}
+
+/** Garantisce i metadati che l'app usa per titolo e aggiornamento target. */
+export function ensureDiagramMeta(
+  value: string,
+  options: { title?: string; targetId?: string | null } = {},
+): string {
+  const lines = cleanMermaidSource(value).split(/\r?\n/);
+  const hasTarget = lines.some((line) => /^\s*%%\s*target\s*:/i.test(line));
+  const hasTitle = lines.some((line) => /^\s*%%\s*title\s*:/i.test(line));
+  if (options.targetId) {
+    const targetIndex = lines.findIndex((line) => /^\s*%%\s*target\s*:/i.test(line));
+    if (targetIndex >= 0) {
+      lines[targetIndex] = `%% target: ${options.targetId}`;
+    } else {
+      lines.unshift(`%% target: ${options.targetId}`);
+    }
+  } else if (hasTarget) {
+    // Un diagramma nuovo non deve trascinarsi dietro un target precedente.
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      if (/^\s*%%\s*target\s*:/i.test(lines[index])) lines.splice(index, 1);
+    }
+  }
+  if (!hasTitle) {
+    const title = options.title?.trim() || "Diagramma corretto";
+    const targetIndex = lines.findIndex((line) => /^\s*%%\s*target\s*:/i.test(line));
+    lines.splice(targetIndex >= 0 ? targetIndex + 1 : 0, 0, `%% title: ${title}`);
+  }
+  return lines.join("\n").trim();
+}
+
+/**
+ * Sostituisce il contenuto di un blocco Mermaid senza toccare il testo attorno.
+ * `ordinal` è l'indice del blocco come restituito da `extractMermaidBlocks`.
+ */
+export function replaceMermaidBlockSource(
+  content: string,
+  ordinal: number,
+  newSource: string,
+): string {
+  const lines = content.split(/\r?\n/);
+  const out: string[] = [];
+  let mode: "none" | "mermaid" | "skip" = "none";
+  let fenceChar = "";
+  let fenceLen = 0;
+  let buffer: string[] = [];
+  let blockIndex = 0;
+  let replaced = false;
+
+  const isClosing = (match: RegExpMatchArray | null): boolean =>
+    Boolean(
+      match &&
+        match[2][0] === fenceChar &&
+        match[2].length >= fenceLen &&
+        match[3] === "",
+    );
+
+  for (const line of lines) {
+    const match = line.match(FENCE);
+    if (mode === "mermaid") {
+      if (isClosing(match)) {
+        if (blockIndex === ordinal) {
+          out.push(...newSource.split(/\r?\n/));
+          replaced = true;
+        } else {
+          out.push(...buffer);
+        }
+        out.push(line);
+        buffer = [];
+        mode = "none";
+        blockIndex += 1;
+      } else {
+        buffer.push(line);
+      }
+      continue;
+    }
+    if (mode === "skip") {
+      out.push(line);
+      if (isClosing(match)) mode = "none";
+      continue;
+    }
+    out.push(line);
+    if (match) {
+      const lang = match[3].toLowerCase();
+      if (lang === "mermaid" || lang === "mmd") {
+        mode = "mermaid";
+        fenceChar = match[2][0];
+        fenceLen = match[2].length;
+        buffer = [];
+      } else {
+        mode = "skip";
+        fenceChar = match[2][0];
+        fenceLen = match[2].length;
+      }
+    }
+  }
+
+  if (!replaced && mode === "mermaid" && blockIndex === ordinal) {
+    out.push(...newSource.split(/\r?\n/));
+  }
+  return out.join("\n");
+}
+
 export function diagramType(source: string): string {
   const first = source
     .split(/\r?\n/)
